@@ -1,0 +1,34 @@
+# Environment / secrets
+.env
+.env.*
+*.env
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local config / credentials
+application-local.properties
+application-local.yml
+application-local.yaml
+.claude/

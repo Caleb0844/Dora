@@ -1,0 +1,128 @@
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
+import { theme } from '@/theme';
+
+export type ProfileGridPlace = {
+  id: string;
+  name: string;
+  image?: string | null;
+};
+
+type Props = {
+  places: ProfileGridPlace[];
+  actionLabel?: string;
+  secondaryActionLabel?: string;
+  onPressPlace?: (place: ProfileGridPlace) => void;
+  onPrimaryAction?: (place: ProfileGridPlace) => void;
+  onSecondaryAction?: (place: ProfileGridPlace) => void;
+};
+
+export function ProfilePlaceGrid({
+  places,
+  actionLabel,
+  secondaryActionLabel,
+  onPressPlace,
+  onPrimaryAction,
+  onSecondaryAction,
+}: Props) {
+  return (
+    <View style={styles.grid}>
+      {places.map((place) => (
+        <View key={place.id} style={styles.card}>
+          <Pressable onPress={() => onPressPlace?.(place)}>
+            {place.image ? (
+              <Image source={{ uri: place.image }} style={styles.image} />
+            ) : (
+              <View style={styles.imagePlaceholder} />
+            )}
+
+            <Text numberOfLines={1} style={styles.name}>
+              {place.name}
+            </Text>
+          </Pressable>
+
+          {(actionLabel || secondaryActionLabel) && (
+            <View style={styles.actions}>
+              {actionLabel && (
+                <Pressable
+                  style={styles.actionButton}
+                  onPress={() => onPrimaryAction?.(place)}
+                >
+                  <Text style={styles.actionText}>{actionLabel}</Text>
+                </Pressable>
+              )}
+
+              {secondaryActionLabel && (
+                <Pressable
+                  style={styles.actionButton}
+                  onPress={() => onSecondaryAction?.(place)}
+                >
+                  <Text style={styles.actionText}>
+                    {secondaryActionLabel}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  card: {
+    width: '48%',
+  },
+  image: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    backgroundColor: theme.colors.border,
+  },
+  imagePlaceholder: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  name: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  actions: {
+    marginTop: 7,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  actionButton: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  actionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+});
