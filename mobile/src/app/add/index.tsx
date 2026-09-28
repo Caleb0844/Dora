@@ -21,7 +21,10 @@ import {
   getCategories,
   getCounties,
 } from '@/services/api/catalog-service';
-import { uploadImageToCloudinary } from '@/services/api/cloudinary-service';
+import {
+  deleteCloudinaryUploadByToken,
+  uploadImageToCloudinary,
+} from '@/services/api/cloudinary-service';
 import { createPlace, getPlace, updatePlace } from '@/services/api/place-service';
 import { theme } from '@/theme';
 
@@ -161,6 +164,8 @@ export default function AddPlaceScreen() {
       return;
     }
 
+    const uploadedDeleteTokens: string[] = [];
+
     try {
       setSubmitting(true);
 
@@ -171,7 +176,12 @@ export default function AddPlaceScreen() {
           uploadedUrls.push(uri);
         } else {
           const upload = await uploadImageToCloudinary(uri);
+
           uploadedUrls.push(upload.url);
+
+          if (upload.deleteToken) {
+            uploadedDeleteTokens.push(upload.deleteToken);
+          }
         }
       }
 
@@ -209,8 +219,16 @@ export default function AddPlaceScreen() {
         setLongitude(null);
       }
     } catch (error: any) {
+      if (uploadedDeleteTokens.length > 0) {
+        await Promise.allSettled(
+          uploadedDeleteTokens.map((deleteToken) =>
+            deleteCloudinaryUploadByToken(deleteToken)
+          )
+        );
+      }
+
       Alert.alert(
-        'Could not add place',
+        isEditing ? 'Could not update place' : 'Could not add place',
         error?.response?.data?.message ??
           error?.message ??
           'Something went wrong.'
