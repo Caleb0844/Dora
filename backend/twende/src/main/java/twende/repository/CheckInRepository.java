@@ -13,6 +13,8 @@ public interface CheckInRepository extends JpaRepository<CheckIn, String> {
 
     long countByUser_Id(String userId);
 
+    long countByPlace_Id(String placeId);
+
     @Query(value = """
             SELECT ci.id AS checkInId,
                    ci.checked_in_at AS checkedInAt,
@@ -43,5 +45,8 @@ public interface CheckInRepository extends JpaRepository<CheckIn, String> {
                     WHERE ci.user_id = :userId
                     """,
             nativeQuery = true)
-    Page<CheckInPlaceProjection> findVisitedPlaces(@Param("userId") String userId, Pageable pageable);
+    Page<CheckInPlaceProjection> findVisitedPlaces(
+            @Param("userId") String userId,
+            Pageable pageable
+    );
 }

@@ -14,11 +14,12 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+import { checkInPlace } from '@/features/profile/check-in-service';
 import {
   removeSavedPlace,
   savePlace,
 } from '@/features/profile/saved-service';
-import { getPlace } from '@/services/api/place-service';
+import { getPlace, type PlaceDetails } from '@/services/api/place-service';
 import { useBookmarkStore } from '@/store/bookmarks';
 import { theme } from '@/theme';
 
@@ -27,10 +28,11 @@ export default function PlaceDetailsScreen() {
   const placeId = Array.isArray(id) ? id[0] : id;
   const { width: windowWidth } = useWindowDimensions();
 
-  const [place, setPlace] = useState<any>(null);
+  const [place, setPlace] = useState<PlaceDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
   const [savingBookmark, setSavingBookmark] = useState(false);
+  const [markingExplored, setMarkingExplored] = useState(false);
   const bookmarks = useBookmarkStore((state) => state.bookmarks);
   const saveBookmark = useBookmarkStore((state) => state.saveBookmark);
   const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
@@ -79,6 +81,26 @@ export default function PlaceDetailsScreen() {
   }
 
   const images: string[] = place.images ?? [];
+
+  const handleMarkExplored = async () => {
+    if (!placeId || place.explored || markingExplored) {
+      return;
+    }
+
+    try {
+      setMarkingExplored(true);
+
+      await checkInPlace(placeId);
+
+      const refreshedPlace = await getPlace(placeId);
+      setPlace(refreshedPlace);
+    } catch (error) {
+      console.log('Failed to mark place as explored:', error);
+      Alert.alert('Could not mark as explored', 'Please try again.');
+    } finally {
+      setMarkingExplored(false);
+    }
+  };
 
   const handleOpenMap = async () => {
     const latitude = Number(place?.latitude);
@@ -294,11 +316,31 @@ const url =
                 <Text style={styles.futureTitle}>Ratings</Text>
                 <Text style={styles.futureText}>Coming later</Text>
               </View>
-              <View style={styles.futureCard}>
-                <Ionicons name="footsteps-outline" size={21} color={theme.colors.green} />
-                <Text style={styles.futureTitle}>Visits</Text>
-                <Text style={styles.futureText}>Coming later</Text>
-              </View>
+              <Pressable
+                style={styles.futureCard}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  place.explored ? 'Place already explored' : 'Mark place as explored'
+                }
+                disabled={place.explored || markingExplored}
+                onPress={handleMarkExplored}
+              >
+                <Ionicons
+                  name={place.explored ? 'checkmark-circle' : 'footsteps-outline'}
+                  size={21}
+                  color={theme.colors.green}
+                />
+                <Text style={styles.futureTitle}>
+                  {place.explored ? 'Explored' : 'Explore'}
+                </Text>
+                <Text style={styles.futureText}>
+                  {markingExplored
+                    ? 'Saving...'
+                    : `${place.explorerCount} ${
+                        place.explorerCount === 1 ? 'explorer' : 'explorers'
+                      }`}
+                </Text>
+              </Pressable>
               <View style={styles.futureCard}>
                 <Ionicons name="share-social-outline" size={21} color={theme.colors.info} />
                 <Text style={styles.futureTitle}>Share</Text>

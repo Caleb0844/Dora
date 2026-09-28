@@ -24,6 +24,7 @@ import twende.exception.ForbiddenException;
 import twende.exception.ResourceNotFoundException;
 import twende.repository.BookmarkRepository;
 import twende.repository.CategoryRepository;
+import twende.repository.CheckInRepository;
 import twende.repository.CountyRepository;
 import twende.repository.NearbyPlaceProjection;
 import twende.repository.PlaceRepository;
@@ -45,6 +46,7 @@ public class PlaceService {
 
     private final PlaceRepository placeRepository;
     private final BookmarkRepository bookmarkRepository;
+    private final CheckInRepository checkInRepository;
     private final CategoryRepository categoryRepository;
     private final CountyRepository countyRepository;
     private final UserRepository userRepository;
@@ -55,6 +57,7 @@ public class PlaceService {
     public PlaceService(
             PlaceRepository placeRepository,
             BookmarkRepository bookmarkRepository,
+            CheckInRepository checkInRepository,
             CategoryRepository categoryRepository,
             CountyRepository countyRepository,
                 UserRepository userRepository,
@@ -64,6 +67,7 @@ public class PlaceService {
     ) {
         this.placeRepository = placeRepository;
         this.bookmarkRepository = bookmarkRepository;
+        this.checkInRepository = checkInRepository;
         this.categoryRepository = categoryRepository;
         this.countyRepository = countyRepository;
         this.userRepository = userRepository;
@@ -145,7 +149,13 @@ public class PlaceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Place not found."));
         boolean bookmarked = viewerId != null
                 && bookmarkRepository.existsByUser_IdAndPlace_Id(viewerId, placeId);
-        return toPlaceResponse(place, bookmarked);
+
+        boolean explored = viewerId != null
+                && checkInRepository.existsByUser_IdAndPlace_Id(viewerId, placeId);
+
+        long explorerCount = checkInRepository.countByPlace_Id(placeId);
+
+        return toPlaceResponse(place, bookmarked, explored, explorerCount);
     }
 
     @Transactional
@@ -344,11 +354,18 @@ public class PlaceService {
     }
 
     private PlaceResponse toPlaceResponse(Place place) {
-        return toPlaceResponse(place, false);
+        long explorerCount = checkInRepository.countByPlace_Id(place.getId());
+        return toPlaceResponse(place, false, false, explorerCount);
     }
 
-    private PlaceResponse toPlaceResponse(Place place, boolean bookmarked) {
+    private PlaceResponse toPlaceResponse(
+            Place place,
+            boolean bookmarked,
+            boolean explored,
+            long explorerCount
+    ) {
         User creator = place.getCreatedBy();
+
         return new PlaceResponse(
                 place.getId(),
                 place.getName(),
@@ -359,7 +376,14 @@ public class PlaceService {
                 place.getLongitude(),
                 place.getImages().stream().map(image -> image.getImageUrl()).toList(),
                 bookmarked,
-                new PlaceResponse.Creator(creator.getId(), creator.getUsername(), creator.getDisplayName(), creator.getProfileImageUrl()),
+                explored,
+                explorerCount,
+                new PlaceResponse.Creator(
+                        creator.getId(),
+                        creator.getUsername(),
+                        creator.getDisplayName(),
+                        creator.getProfileImageUrl()
+                ),
                 place.getCreatedAt(),
                 place.getUpdatedAt()
         );

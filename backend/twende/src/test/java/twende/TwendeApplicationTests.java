@@ -267,7 +267,7 @@ class TwendeApplicationTests {
         }
 
         @Test
-        void checkInsAwardFivePointsOnceAndReturnPagedVisitHistory() throws Exception {
+        void checkInsAwardOnePointOnceAndReturnPagedVisitHistory() throws Exception {
         TestUser creator = registerUser();
         TestUser visitor = registerUser();
         String firstPlaceId = createPlace(creator, "First Visit", "first-visit");
@@ -301,7 +301,7 @@ class TwendeApplicationTests {
 
         mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + visitor.accessToken()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.points").value(10))
+            .andExpect(jsonPath("$.data.points").value(2))
             .andExpect(jsonPath("$.data.placesVisited").value(2));
         mockMvc.perform(get("/api/checkins/me").header("Authorization", "Bearer " + visitor.accessToken())
                 .param("page", "0").param("size", "1"))
@@ -338,7 +338,7 @@ class TwendeApplicationTests {
         ));
         mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + visitor.accessToken()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.points").value(10));
+            .andExpect(jsonPath("$.data.points").value(2));
         }
 
         @Test
@@ -354,7 +354,7 @@ class TwendeApplicationTests {
         mockMvc.perform(get("/api/users/{username}", visitor.username()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.username").value(visitor.username()))
-            .andExpect(jsonPath("$.data.points").value(5))
+            .andExpect(jsonPath("$.data.points").value(1))
             .andExpect(jsonPath("$.data.placesVisited").value(1))
             .andExpect(jsonPath("$.data.email").doesNotExist())
             .andExpect(jsonPath("$.data.latitude").doesNotExist())

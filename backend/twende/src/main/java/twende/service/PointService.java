@@ -26,7 +26,7 @@ public class PointService {
             PointTransactionRepository pointTransactionRepository,
             EntityManager entityManager,
             @Value("${app.points.place-contribution:10}") int placeContributionPoints,
-            @Value("${app.points.check-in:5}") int checkInPoints
+            @Value("${app.points.check-in:1}") int checkInPoints
     ) {
         if (placeContributionPoints <= 0 || checkInPoints <= 0) {
             throw new IllegalArgumentException("Point award values must be greater than zero.");

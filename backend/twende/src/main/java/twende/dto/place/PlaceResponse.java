@@ -14,10 +14,17 @@ public record PlaceResponse(
         BigDecimal longitude,
         List<String> images,
         boolean bookmarked,
+        boolean explored,
+        long explorerCount,
         Creator creator,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
-    public record Creator(String id, String username, String displayName, String profileImage) {
+    public record Creator(
+            String id,
+            String username,
+            String displayName,
+            String profileImage
+    ) {
     }
 }

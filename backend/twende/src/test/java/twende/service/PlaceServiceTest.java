@@ -12,6 +12,7 @@ import twende.exception.BadRequestException;
 import twende.exception.ForbiddenException;
 import twende.repository.BookmarkRepository;
 import twende.repository.CategoryRepository;
+import twende.repository.CheckInRepository;
 import twende.repository.CountyRepository;
 import twende.repository.PlaceRepository;
 import twende.repository.PointTransactionRepository;
@@ -33,6 +34,7 @@ class PlaceServiceTest {
 
     private final PlaceRepository placeRepository = mock(PlaceRepository.class);
     private final BookmarkRepository bookmarkRepository = mock(BookmarkRepository.class);
+    private final CheckInRepository checkInRepository = mock(CheckInRepository.class);
     private final CategoryRepository categoryRepository = mock(CategoryRepository.class);
     private final CountyRepository countyRepository = mock(CountyRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
@@ -48,7 +50,8 @@ class PlaceServiceTest {
     void setUp() {
         placeService = new PlaceService(
                 placeRepository,
-            bookmarkRepository,
+                bookmarkRepository,
+                checkInRepository,
                 categoryRepository,
                 countyRepository,
                 userRepository,
