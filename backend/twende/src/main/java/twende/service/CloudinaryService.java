@@ -19,36 +19,72 @@ public class CloudinaryService {
             @Value("${app.cloudinary.api-key}") String apiKey,
             @Value("${app.cloudinary.api-secret}") String apiSecret
     ) {
-        this.cloudName = cloudName;
+        if (cloudName == null || cloudName.isBlank()) {
+            throw new IllegalStateException(
+                    "CLOUDINARY_CLOUD_NAME is not configured."
+            );
+        }
+
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException(
+                    "CLOUDINARY_API_KEY is not configured."
+            );
+        }
+
+        if (apiSecret == null || apiSecret.isBlank()) {
+            throw new IllegalStateException(
+                    "CLOUDINARY_API_SECRET is not configured."
+            );
+        }
+
+        this.cloudName = cloudName.trim();
 
         this.cloudinary = new Cloudinary(Map.of(
-                "cloud_name", cloudName,
-                "api_key", apiKey,
-                "api_secret", apiSecret,
+                "cloud_name", this.cloudName,
+                "api_key", apiKey.trim(),
+                "api_secret", apiSecret.trim(),
                 "secure", true
         ));
     }
 
     public void deleteImageByUrl(String imageUrl) {
         if (imageUrl == null || imageUrl.isBlank()) {
-            return;
-        }
-
-        URI uri = URI.create(imageUrl);
-        String path = uri.getPath();
-        String expectedPrefix = "/" + cloudName + "/image/upload/";
-
-        if (path == null || !path.startsWith(expectedPrefix)) {
-            return;
+            throw new IllegalArgumentException(
+                    "Cloudinary image URL must not be blank."
+            );
         }
 
         String publicId = extractPublicId(imageUrl);
 
         try {
-            var result = cloudinary.uploader().destroy(
+            Map<?, ?> result = cloudinary.uploader().destroy(
                     publicId,
-                    ObjectUtils.asMap("invalidate", true)
+                    ObjectUtils.asMap(
+                            "resource_type", "image",
+                            "invalidate", true
+                    )
             );
+
+            Object deletionResult = result.get("result");
+
+            System.out.println(
+                    "Cloudinary delete: publicId="
+                            + publicId
+                            + ", result="
+                            + deletionResult
+            );
+
+            if (!"ok".equals(deletionResult)) {
+                throw new IllegalStateException(
+                        "Cloudinary did not delete image "
+                                + publicId
+                                + ". Result: "
+                                + deletionResult
+                );
+            }
+
+        } catch (IllegalStateException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new IllegalStateException(
                     "Failed to delete Cloudinary image: " + publicId,
@@ -58,27 +94,49 @@ public class CloudinaryService {
     }
 
     private String extractPublicId(String imageUrl) {
-        URI uri = URI.create(imageUrl);
+        URI uri;
 
-        String expectedPrefix =
-                "/"+ cloudName + "/image/upload/";
-
-        String path = uri.getPath();
-
-        if (!path.startsWith(expectedPrefix)) {
+        try {
+            uri = URI.create(imageUrl);
+        } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException(
-                    "Image URL does not belong to the configured Cloudinary account."
+                    "Invalid Cloudinary image URL: " + imageUrl,
+                    exception
             );
         }
 
-        String assetPath = path.substring(expectedPrefix.length());
+        String host = uri.getHost();
+        String path = uri.getPath();
 
-        assetPath = assetPath.replaceFirst("^v\\d+/", "");
+        if (!"res.cloudinary.com".equalsIgnoreCase(host)) {
+            throw new IllegalArgumentException(
+                    "Image URL is not a Cloudinary URL."
+            );
+        }
+
+        String expectedPrefix =
+                "/" + cloudName + "/image/upload/";
+
+        if (path == null || !path.startsWith(expectedPrefix)) {
+            throw new IllegalArgumentException(
+                    "Image URL does not belong to Cloudinary cloud: "
+                            + cloudName
+            );
+        }
+
+        String assetPath =
+                path.substring(expectedPrefix.length());
+
+        assetPath = assetPath.replaceFirst(
+                "^v\\d+/",
+                ""
+        );
 
         int extensionIndex = assetPath.lastIndexOf('.');
 
         if (extensionIndex > 0) {
-            assetPath = assetPath.substring(0, extensionIndex);
+            assetPath =
+                    assetPath.substring(0, extensionIndex);
         }
 
         if (assetPath.isBlank()) {
