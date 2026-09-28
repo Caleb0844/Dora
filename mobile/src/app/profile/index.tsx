@@ -31,11 +31,9 @@ import {
   type MyProfile,
 } from '@/features/profile/profile-service';
 import { getVisitedPlaces } from '@/features/profile/visited-service';
-import {
-  getSavedPlaces,
-  removeSavedPlace,
-} from '@/features/profile/saved-service';
+import { getSavedPlaces } from '@/features/profile/saved-service';
 import { logout } from '@/features/auth/auth-service';
+import { useBookmarkStore } from '@/store/bookmarks';
 import { deletePlace } from '@/services/api/place-service';
 import { theme } from '@/theme';
 
@@ -55,6 +53,7 @@ export default function ProfileScreen() {
   const [savedPlaces, setSavedPlaces] = useState<
     { id: string; name: string; image?: string }[]
   >([]);
+  const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
   const [addedPlaces, setAddedPlaces] = useState<
     { id: string; name: string; image?: string }[]
   >([]);
@@ -252,7 +251,7 @@ export default function ProfileScreen() {
                       }
                       actionLabel="Remove"
                       onPrimaryAction={async (place) => {
-                        await removeSavedPlace(place.id);
+                        await removeBookmark(place.id);
                         setSavedPlaces((current) =>
                           current.filter((savedPlace) => savedPlace.id !== place.id)
                         );

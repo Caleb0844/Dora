@@ -22,6 +22,7 @@ import twende.entity.User;
 import twende.exception.BadRequestException;
 import twende.exception.ForbiddenException;
 import twende.exception.ResourceNotFoundException;
+import twende.repository.BookmarkRepository;
 import twende.repository.CategoryRepository;
 import twende.repository.CountyRepository;
 import twende.repository.NearbyPlaceProjection;
@@ -43,6 +44,7 @@ public class PlaceService {
     private static final double MAX_NEARBY_RADIUS_KM = 500.0;
 
     private final PlaceRepository placeRepository;
+    private final BookmarkRepository bookmarkRepository;
     private final CategoryRepository categoryRepository;
     private final CountyRepository countyRepository;
     private final UserRepository userRepository;
@@ -52,6 +54,7 @@ public class PlaceService {
 
     public PlaceService(
             PlaceRepository placeRepository,
+            BookmarkRepository bookmarkRepository,
             CategoryRepository categoryRepository,
             CountyRepository countyRepository,
                 UserRepository userRepository,
@@ -60,6 +63,7 @@ public class PlaceService {
                 CloudinaryService cloudinaryService
     ) {
         this.placeRepository = placeRepository;
+        this.bookmarkRepository = bookmarkRepository;
         this.categoryRepository = categoryRepository;
         this.countyRepository = countyRepository;
         this.userRepository = userRepository;
@@ -136,10 +140,12 @@ public class PlaceService {
     }
 
     @Transactional(readOnly = true)
-    public PlaceResponse getPublished(String placeId) {
+    public PlaceResponse getPublished(String placeId, String viewerId) {
         Place place = placeRepository.findByIdAndStatus(placeId, PlaceStatus.PUBLISHED)
                 .orElseThrow(() -> new ResourceNotFoundException("Place not found."));
-        return toPlaceResponse(place);
+        boolean bookmarked = viewerId != null
+                && bookmarkRepository.existsByUser_IdAndPlace_Id(viewerId, placeId);
+        return toPlaceResponse(place, bookmarked);
     }
 
     @Transactional
@@ -338,6 +344,10 @@ public class PlaceService {
     }
 
     private PlaceResponse toPlaceResponse(Place place) {
+        return toPlaceResponse(place, false);
+    }
+
+    private PlaceResponse toPlaceResponse(Place place, boolean bookmarked) {
         User creator = place.getCreatedBy();
         return new PlaceResponse(
                 place.getId(),
@@ -348,6 +358,7 @@ public class PlaceService {
                 place.getLatitude(),
                 place.getLongitude(),
                 place.getImages().stream().map(image -> image.getImageUrl()).toList(),
+                bookmarked,
                 new PlaceResponse.Creator(creator.getId(), creator.getUsername(), creator.getDisplayName(), creator.getProfileImageUrl()),
                 place.getCreatedAt(),
                 place.getUpdatedAt()

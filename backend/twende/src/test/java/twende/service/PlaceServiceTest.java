@@ -10,6 +10,7 @@ import twende.entity.Place;
 import twende.entity.User;
 import twende.exception.BadRequestException;
 import twende.exception.ForbiddenException;
+import twende.repository.BookmarkRepository;
 import twende.repository.CategoryRepository;
 import twende.repository.CountyRepository;
 import twende.repository.PlaceRepository;
@@ -31,6 +32,7 @@ import static org.mockito.Mockito.when;
 class PlaceServiceTest {
 
     private final PlaceRepository placeRepository = mock(PlaceRepository.class);
+    private final BookmarkRepository bookmarkRepository = mock(BookmarkRepository.class);
     private final CategoryRepository categoryRepository = mock(CategoryRepository.class);
     private final CountyRepository countyRepository = mock(CountyRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
@@ -46,6 +48,7 @@ class PlaceServiceTest {
     void setUp() {
         placeService = new PlaceService(
                 placeRepository,
+            bookmarkRepository,
                 categoryRepository,
                 countyRepository,
                 userRepository,

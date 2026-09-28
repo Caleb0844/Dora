@@ -13,6 +13,7 @@ public record PlaceResponse(
         BigDecimal latitude,
         BigDecimal longitude,
         List<String> images,
+        boolean bookmarked,
         Creator creator,
         LocalDateTime createdAt,
         LocalDateTime updatedAt

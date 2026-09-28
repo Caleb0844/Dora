@@ -508,11 +508,23 @@ class TwendeApplicationTests {
         .andExpect(jsonPath("$.data.places[1].distanceKm").value(greaterThan(0.0)));
     mockMvc.perform(get("/api/places/{placeId}", placeId))
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.bookmarked").value(false))
         .andExpect(jsonPath("$.data.creator.email").doesNotExist());
+    mockMvc.perform(get("/api/places/{placeId}", placeId)
+            .header("Authorization", "Bearer " + otherUser.accessToken()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.bookmarked").value(false));
 
     mockMvc.perform(post("/api/bookmarks/{placeId}", placeId)
             .header("Authorization", "Bearer " + creator.accessToken()))
         .andExpect(status().isCreated());
+    mockMvc.perform(get("/api/places/{placeId}", placeId)
+            .header("Authorization", "Bearer " + creator.accessToken()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.bookmarked").value(true));
+    mockMvc.perform(get("/api/places/{placeId}", placeId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.bookmarked").value(false));
     mockMvc.perform(post("/api/bookmarks/{placeId}", placeId)
             .header("Authorization", "Bearer " + creator.accessToken()))
         .andExpect(status().isConflict());

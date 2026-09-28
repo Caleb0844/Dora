@@ -4,6 +4,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,26 +14,39 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+import {
+  removeSavedPlace,
+  savePlace,
+} from '@/features/profile/saved-service';
 import { getPlace } from '@/services/api/place-service';
+import { useBookmarkStore } from '@/store/bookmarks';
 import { theme } from '@/theme';
 
 export default function PlaceDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const placeId = Array.isArray(id) ? id[0] : id;
   const { width: windowWidth } = useWindowDimensions();
 
   const [place, setPlace] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
+  const [savingBookmark, setSavingBookmark] = useState(false);
+  const bookmarks = useBookmarkStore((state) => state.bookmarks);
+  const saveBookmark = useBookmarkStore((state) => state.saveBookmark);
+  const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
+  const isBookmarked = placeId
+    ? bookmarks[placeId] ?? Boolean(place?.bookmarked)
+    : false;
 
   useEffect(() => {
-    if (!id) {
+    if (!placeId) {
       return;
     }
 
     async function loadPlace() {
       try {
         setLoading(true);
-        const data = await getPlace(id);
+        const data = await getPlace(placeId);
         setPlace(data);
       } catch (error) {
         console.log('Failed to load place:', error);
@@ -41,7 +56,7 @@ export default function PlaceDetailsScreen() {
     }
 
     loadPlace();
-  }, [id]);
+  }, [placeId]);
 
   if (loading) {
     return (
@@ -64,6 +79,22 @@ export default function PlaceDetailsScreen() {
   }
 
   const images: string[] = place.images ?? [];
+
+  const handleOpenMap = async () => {
+    const latitude = Number(place?.latitude);
+    const longitude = Number(place?.longitude);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      Alert.alert('Location unavailable', 'This place does not have coordinates yet.');
+      return;
+    }
+
+const url =
+  `https://www.google.com/maps/dir/?api=1` +
+  `&destination=${latitude},${longitude}` +
+  `&dir_action=`; 
+     await Linking.openURL(url);
+  };
 
   return (
     <View style={styles.screen}>
@@ -167,7 +198,7 @@ export default function PlaceDetailsScreen() {
               style={styles.locationMapButton}
               accessibilityRole="button"
               accessibilityLabel="Open map"
-              onPress={() => {}}
+              onPress={handleOpenMap}
             >
               <Ionicons
                 name="map-outline"
@@ -177,9 +208,45 @@ export default function PlaceDetailsScreen() {
             </Pressable>
           </View>
 
-          <Pressable style={styles.saveButton} accessibilityRole="button">
-            <Ionicons name="bookmark-outline" size={21} color={theme.colors.white} />
-            <Text style={styles.saveButtonText}>Save place</Text>
+          <Pressable
+            style={[
+              styles.saveButton,
+              isBookmarked && styles.saveButtonSaved,
+              savingBookmark && styles.saveButtonDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={isBookmarked ? 'Saved place' : 'Save place'}
+            disabled={savingBookmark}
+            onPress={async () => {
+              if (!placeId || savingBookmark) {
+                return;
+              }
+
+              const previousEffectiveValue =
+                bookmarks[placeId] ?? Boolean(place?.bookmarked);
+              const shouldSave = !previousEffectiveValue;
+
+              setSavingBookmark(true);
+
+              try {
+                if (shouldSave) {
+                  await saveBookmark(placeId);
+                } else {
+                  await removeBookmark(placeId);
+                }
+              } finally {
+                setSavingBookmark(false);
+              }
+            }}
+          >
+            <Ionicons
+              name={isBookmarked ? 'bookmark' : 'bookmark-outline'}
+              size={21}
+              color={theme.colors.white}
+            />
+            <Text style={styles.saveButtonText}>
+              {isBookmarked ? 'Saved' : 'Save place'}
+            </Text>
           </Pressable>
 
           {place.creator && (
@@ -417,7 +484,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 9,
     borderRadius: 14,
+    backgroundColor: theme.colors.green,
+  },
+  saveButtonSaved: {
     backgroundColor: theme.colors.accent,
+  },
+  saveButtonDisabled: {
+    opacity: 0.7,
   },
   saveButtonText: {
     color: theme.colors.white,

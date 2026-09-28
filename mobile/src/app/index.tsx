@@ -12,15 +12,23 @@ import {
 
 import { BottomNav } from '@/components/bottom-nav';
 import { PostActions } from '@/components/post-actions';
-import { FeedPost, getFeed } from '@/services/api/feed-service';
 import { checkInPlace } from '@/features/profile/check-in-service';
-import { savePlace, removeSavedPlace } from '@/features/profile/saved-service';
+import {
+  removeSavedPlace,
+  savePlace,
+} from '@/features/profile/saved-service';
+import { FeedPost, getFeed } from '@/services/api/feed-service';
+import { useBookmarkStore } from '@/store/bookmarks';
 import { theme } from '@/theme';
 
 export default function HomeScreen() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [visitingIds, setVisitingIds] = useState<string[]>([]);
+  const [bookmarkingIds, setBookmarkingIds] = useState<string[]>([]);
+  const bookmarks = useBookmarkStore((state) => state.bookmarks);
+  const saveBookmark = useBookmarkStore((state) => state.saveBookmark);
+  const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
 
   useEffect(() => {
     getFeed()
@@ -103,7 +111,7 @@ export default function HomeScreen() {
             <PostActions
               visited={item.visited}
               visiting={visitingIds.includes(item.id)}
-              bookmarked={item.bookmarked}
+              bookmarked={bookmarks[item.id] ?? item.bookmarked}
               onVisitedPress={async () => {
                 setPosts((current) =>
                   current.map((post) =>
@@ -137,34 +145,24 @@ export default function HomeScreen() {
                 }
               }}
               onBookmarkPress={async () => {
-                const wasBookmarked = item.bookmarked;
+                if (bookmarkingIds.includes(item.id)) {
+                  return;
+                }
 
-                setPosts((current) =>
-                  current.map((post) =>
-                    post.id === item.id
-                      ? { ...post, bookmarked: !wasBookmarked }
-                      : post
-                  )
-                );
+                const previousEffectiveValue = bookmarks[item.id] ?? item.bookmarked;
+                const nextBookmarked = !previousEffectiveValue;
+
+                setBookmarkingIds((current) => [...current, item.id]);
 
                 try {
-                  if (wasBookmarked) {
-                    await removeSavedPlace(item.id);
+                  if (nextBookmarked) {
+                    await saveBookmark(item.id);
                   } else {
-                    await savePlace(item.id);
+                    await removeBookmark(item.id);
                   }
-                } catch (error: any) {
-                  setPosts((current) =>
-                    current.map((post) =>
-                      post.id === item.id
-                        ? { ...post, bookmarked: wasBookmarked }
-                        : post
-                    )
-                  );
-
-                  console.log(
-                    'Bookmark update failed:',
-                    error?.response?.data ?? error?.message
+                } finally {
+                  setBookmarkingIds((current) =>
+                    current.filter((id) => id !== item.id)
                   );
                 }
               }}

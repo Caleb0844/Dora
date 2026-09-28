@@ -60,8 +60,13 @@ public class PlaceController {
     }
 
     @GetMapping("/{placeId}")
-    public ResponseEntity<ApiResponse<PlaceResponse>> get(@PathVariable String placeId) {
-        PlaceResponse place = placeService.getPublished(placeId);
+    public ResponseEntity<ApiResponse<PlaceResponse>> get(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String placeId
+    ) {
+        PlaceResponse place = placeService.getPublished(
+                placeId, jwt == null ? null : jwt.getSubject()
+        );
         return ResponseEntity.ok(new ApiResponse<>(true, "Place retrieved successfully.", place));
     }
 
