@@ -244,6 +244,12 @@ export default function ProfileScreen() {
                   <>
                     <ProfilePlaceGrid
                       places={savedPlaces}
+                      onPressPlace={(place) =>
+                        router.push({
+                          pathname: '/place/[id]',
+                          params: { id: place.id },
+                        })
+                      }
                       actionLabel="Remove"
                       onPrimaryAction={async (place) => {
                         await removeSavedPlace(place.id);
@@ -289,6 +295,12 @@ export default function ProfileScreen() {
                 ) : (
                   <ProfilePlaceGrid
                     places={addedPlaces}
+                    onPressPlace={(place) =>
+                      router.push({
+                        pathname: '/place/[id]',
+                        params: { id: place.id },
+                      })
+                    }
                     actionLabel="Edit"
                     secondaryActionLabel="Delete"
                     onPrimaryAction={(place) => {

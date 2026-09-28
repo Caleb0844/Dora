@@ -1,8 +1,10 @@
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Image,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -77,17 +79,26 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {item.images.length > 0 ? (
-              <Image
-                source={{ uri: item.images[0] }}
-                style={styles.image}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.image, styles.noImage]}>
-                <Text style={styles.noImageText}>No image</Text>
-              </View>
-            )}
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: '/place/[id]',
+                  params: { id: item.id },
+                })
+              }
+            >
+              {item.images.length > 0 ? (
+                <Image
+                  source={{ uri: item.images[0] }}
+                  style={styles.image}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.image, styles.noImage]}>
+                  <Text style={styles.noImageText}>No image</Text>
+                </View>
+              )}
+            </Pressable>
 
             <PostActions
               visited={item.visited}
