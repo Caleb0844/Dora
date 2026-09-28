@@ -170,8 +170,8 @@ export default function AddPlaceScreen() {
         if (uri.startsWith('http://') || uri.startsWith('https://')) {
           uploadedUrls.push(uri);
         } else {
-          const url = await uploadImageToCloudinary(uri);
-          uploadedUrls.push(url);
+          const upload = await uploadImageToCloudinary(uri);
+          uploadedUrls.push(upload.url);
         }
       }
 
@@ -228,8 +228,11 @@ export default function AddPlaceScreen() {
 
     try {
       setUploadingImage(true);
-      const url = await uploadImageToCloudinary(images[0]);
-      Alert.alert('Upload successful', url);
+      const upload = await uploadImageToCloudinary(images[0]);
+      Alert.alert(
+        'Upload successful',
+        `URL: ${upload.url}\nDelete token: ${upload.deleteToken ? 'received' : 'missing'}`
+      );
     } catch (error: any) {
   Alert.alert(
     'Upload failed',
