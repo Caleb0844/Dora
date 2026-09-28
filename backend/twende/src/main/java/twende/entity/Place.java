@@ -96,10 +96,22 @@ public class Place {
         updatedAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
-    public void addImage(String imageUrl, int sortOrder) {
-        PlaceImage image = new PlaceImage(imageUrl, sortOrder);
+    public void addImage(
+            String imageUrl,
+            String cloudinaryPublicId,
+            int sortOrder
+    ) {
+        PlaceImage image = new PlaceImage(
+                imageUrl,
+                cloudinaryPublicId,
+                sortOrder
+        );
         image.setPlace(this);
         images.add(image);
+    }
+
+    public void addImage(String imageUrl, int sortOrder) {
+        addImage(imageUrl, null, sortOrder);
     }
 
     public String getId() {

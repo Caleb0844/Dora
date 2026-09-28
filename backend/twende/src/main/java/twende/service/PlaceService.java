@@ -8,6 +8,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import twende.dto.place.CreatePlaceRequest;
 import twende.dto.place.NearbyPlacesResponse;
 import twende.dto.place.PageResponse;
@@ -34,8 +36,10 @@ import twende.repository.UserRepository;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 @Service
 public class PlaceService {
@@ -159,20 +163,112 @@ public class PlaceService {
     }
 
     @Transactional
-    public PlaceResponse update(String userId, String placeId, UpdatePlaceRequest request) {
+    public PlaceResponse update(
+            String userId,
+            String placeId,
+            UpdatePlaceRequest request
+    ) {
         Place place = getOwnedPlace(userId, placeId);
-        applyRequest(
-                place,
-                request.name(),
-                request.category(),
-                request.countyCode(),
-                request.description(),
-                request.latitude(),
-                request.longitude(),
-                request.images()
-        );
+
+        Category category = categoryRepository
+                .findBySlug(request.category().trim().toLowerCase(Locale.ROOT))
+                .filter(candidate -> candidate.isActive())
+                .orElseThrow(() ->
+                        new BadRequestException(
+                                "Category is invalid or inactive."
+                        )
+                );
+
+        County county = countyRepository
+                .findByCode(request.countyCode().trim())
+                .orElseThrow(() ->
+                        new BadRequestException(
+                                "County code is invalid."
+                        )
+                );
+
+        List<String> imageUrls = request.images();
+
+        if (imageUrls == null
+                || imageUrls.size() < 2
+                || imageUrls.size() > 10) {
+            throw new BadRequestException(
+                    "Provide between 2 and 10 images."
+            );
+        }
+
+        List<String> normalizedImageUrls = imageUrls.stream()
+                .map(this::validateImageUrl)
+                .toList();
+
+        Set<String> uniqueImageUrls =
+                new HashSet<>(normalizedImageUrls);
+
+        if (uniqueImageUrls.size() != normalizedImageUrls.size()) {
+            throw new BadRequestException(
+                    "The same image cannot be added more than once."
+            );
+        }
+
+        List<String> removedPublicIds = place.getImages()
+                .stream()
+                .filter(image ->
+                        !uniqueImageUrls.contains(image.getImageUrl())
+                )
+                .map(image -> {
+                    if (image.getCloudinaryPublicId() != null
+                            && !image.getCloudinaryPublicId().isBlank()) {
+                        return image.getCloudinaryPublicId();
+                    }
+
+                    return cloudinaryService.extractPublicId(
+                            image.getImageUrl()
+                    );
+                })
+                .toList();
+
+        place.setName(request.name().trim());
+        place.setCategory(category);
+        place.setCounty(county);
+        place.setDescription(request.description().trim());
+        place.setLatitude(request.latitude());
+        place.setLongitude(request.longitude());
+
+        place.getImages().clear();
+
+        for (int index = 0;
+             index < normalizedImageUrls.size();
+             index++) {
+
+            String imageUrl = normalizedImageUrls.get(index);
+
+            String publicId;
+
+            try {
+                publicId =
+                        cloudinaryService.extractPublicId(imageUrl);
+            } catch (IllegalArgumentException exception) {
+                throw new BadRequestException(
+                        "Every place image must belong to Twende's Cloudinary account."
+                );
+            }
+
+            place.addImage(
+                    imageUrl,
+                    publicId,
+                    index
+            );
+        }
+
         place.publish();
-        return toPlaceResponse(placeRepository.save(place));
+
+        Place savedPlace = placeRepository.save(place);
+
+        scheduleCloudinaryDeletionAfterCommit(
+                removedPublicIds
+        );
+
+        return toPlaceResponse(savedPlace);
     }
 
     @Transactional
@@ -203,16 +299,24 @@ public class PlaceService {
         pointTransactionRepository.deleteAll(checkInTransactions);
         pointTransactionRepository.flush();
 
-        var imageUrls = place.getImages().stream()
-                .map(image -> image.getImageUrl())
-                .toList();
+        List<String> publicIds = place.getImages()
+                .stream()
+                .map(image -> {
+                    if (image.getCloudinaryPublicId() != null
+                            && !image.getCloudinaryPublicId().isBlank()) {
+                        return image.getCloudinaryPublicId();
+                    }
 
-        for (String imageUrl : imageUrls) {
-            cloudinaryService.deleteImageByUrl(imageUrl);
-        }
+                    return cloudinaryService.extractPublicId(
+                            image.getImageUrl()
+                    );
+                })
+                .toList();
 
         placeRepository.delete(place);
         placeRepository.flush();
+
+        scheduleCloudinaryDeletionAfterCommit(publicIds);
     }
 
     @Transactional(readOnly = true)
@@ -251,18 +355,18 @@ public class PlaceService {
 
     private void applyRequest(Place place, CreatePlaceRequest request) {
         applyRequest(
-            place,
-            request.name(),
-            request.category(),
-            request.countyCode(),
-            request.description(),
-            request.latitude(),
-            request.longitude(),
-            request.images()
+                place,
+                request.name(),
+                request.category(),
+                request.countyCode(),
+                request.description(),
+                request.latitude(),
+                request.longitude(),
+                request.images()
         );
-        }
+    }
 
-        private void applyRequest(
+    private void applyRequest(
             Place place,
             String name,
             String categorySlug,
@@ -271,14 +375,28 @@ public class PlaceService {
             BigDecimal latitude,
             BigDecimal longitude,
             List<String> imageUrls
-        ) {
-        Category category = categoryRepository.findBySlug(categorySlug.trim().toLowerCase(Locale.ROOT))
-            .filter(candidate -> candidate.isActive())
-                .orElseThrow(() -> new BadRequestException("Category is invalid or inactive."));
-        County county = countyRepository.findByCode(countyCode.trim())
-                .orElseThrow(() -> new BadRequestException("County code is invalid."));
-        if (imageUrls == null || imageUrls.size() < 2) {
-            throw new BadRequestException("At least two image URLs are required.");
+    ) {
+        Category category = categoryRepository
+                .findBySlug(categorySlug.trim().toLowerCase(Locale.ROOT))
+                .filter(candidate -> candidate.isActive())
+                .orElseThrow(() ->
+                        new BadRequestException(
+                                "Category is invalid or inactive."
+                        )
+                );
+
+        County county = countyRepository
+                .findByCode(countyCode.trim())
+                .orElseThrow(() ->
+                        new BadRequestException(
+                                "County code is invalid."
+                        )
+                );
+
+        if (imageUrls == null || imageUrls.size() < 2 || imageUrls.size() > 10) {
+            throw new BadRequestException(
+                    "Provide between 2 and 10 images."
+            );
         }
 
         place.setName(name.trim());
@@ -287,22 +405,77 @@ public class PlaceService {
         place.setDescription(description.trim());
         place.setLatitude(latitude);
         place.setLongitude(longitude);
+
         place.getImages().clear();
+
         for (int index = 0; index < imageUrls.size(); index++) {
-            place.addImage(validateImageUrl(imageUrls.get(index)), index);
+            String imageUrl = validateImageUrl(imageUrls.get(index));
+
+            String publicId;
+
+            try {
+                publicId = cloudinaryService.extractPublicId(imageUrl);
+            } catch (IllegalArgumentException exception) {
+                throw new BadRequestException(
+                        "Every place image must belong to Twende's Cloudinary account."
+                );
+            }
+
+            place.addImage(
+                    imageUrl,
+                    publicId,
+                    index
+            );
         }
     }
 
     private String validateImageUrl(String imageUrl) {
         try {
             URI uri = URI.create(imageUrl.trim());
-            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
-                throw new BadRequestException("Image URLs must use HTTPS and include a host.");
+
+            if (!"https".equalsIgnoreCase(uri.getScheme())
+                    || uri.getHost() == null) {
+                throw new BadRequestException(
+                        "Image URLs must use HTTPS and include a host."
+                );
             }
+
             return uri.toString();
         } catch (IllegalArgumentException exception) {
-            throw new BadRequestException("Image URL is invalid.");
+            throw new BadRequestException(
+                    "Image URL is invalid."
+            );
         }
+    }
+
+    private void scheduleCloudinaryDeletionAfterCommit(
+            List<String> publicIds
+    ) {
+        if (publicIds == null || publicIds.isEmpty()) {
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        for (String publicId : publicIds) {
+                            try {
+                                cloudinaryService.deleteImageByPublicId(
+                                        publicId
+                                );
+                            } catch (RuntimeException exception) {
+                                System.err.println(
+                                        "Failed to clean up Cloudinary image "
+                                                + publicId
+                                                + ": "
+                                                + exception.getMessage()
+                                );
+                            }
+                        }
+                    }
+                }
+        );
     }
 
     private Pageable pageable(int page, int size) {

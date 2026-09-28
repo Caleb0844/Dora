@@ -47,18 +47,18 @@ public class CloudinaryService {
         ));
     }
 
-    public void deleteImageByUrl(String imageUrl) {
-        if (imageUrl == null || imageUrl.isBlank()) {
+    public void deleteImageByPublicId(String publicId) {
+        if (publicId == null || publicId.isBlank()) {
             throw new IllegalArgumentException(
-                    "Cloudinary image URL must not be blank."
+                    "Cloudinary public ID must not be blank."
             );
         }
 
-        String publicId = extractPublicId(imageUrl);
+        String normalizedPublicId = publicId.trim();
 
         try {
             Map<?, ?> result = cloudinary.uploader().destroy(
-                    publicId,
+                    normalizedPublicId,
                     ObjectUtils.asMap(
                             "resource_type", "image",
                             "invalidate", true
@@ -69,7 +69,7 @@ public class CloudinaryService {
 
             System.out.println(
                     "Cloudinary delete: publicId="
-                            + publicId
+                            + normalizedPublicId
                             + ", result="
                             + deletionResult
             );
@@ -77,27 +77,39 @@ public class CloudinaryService {
             if (!"ok".equals(deletionResult)) {
                 throw new IllegalStateException(
                         "Cloudinary did not delete image "
-                                + publicId
+                                + normalizedPublicId
                                 + ". Result: "
                                 + deletionResult
                 );
             }
-
         } catch (IllegalStateException exception) {
             throw exception;
         } catch (Exception exception) {
             throw new IllegalStateException(
-                    "Failed to delete Cloudinary image: " + publicId,
+                    "Failed to delete Cloudinary image: "
+                            + normalizedPublicId,
                     exception
             );
         }
     }
 
-    private String extractPublicId(String imageUrl) {
+    public void deleteImageByUrl(String imageUrl) {
+        deleteImageByPublicId(
+                extractPublicId(imageUrl)
+        );
+    }
+
+    public String extractPublicId(String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Cloudinary image URL must not be blank."
+            );
+        }
+
         URI uri;
 
         try {
-            uri = URI.create(imageUrl);
+            uri = URI.create(imageUrl.trim());
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException(
                     "Invalid Cloudinary image URL: " + imageUrl,

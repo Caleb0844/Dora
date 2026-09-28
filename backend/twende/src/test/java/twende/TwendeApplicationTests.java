@@ -50,7 +50,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "app.jwt.secret=dHdlbmRlLWF1dGgtdGVzdC1zZWNyZXQtbm90LXByb2Q=",
     "app.oauth2.google.enabled=true",
     "app.oauth2.google.client-id=test-google-client-id",
-    "app.oauth2.google.client-secret=test-google-client-secret"
+    "app.oauth2.google.client-secret=test-google-client-secret",
+    "app.cloudinary.cloud-name=test-cloud",
+    "app.cloudinary.api-key=test-key",
+    "app.cloudinary.api-secret=test-secret"
 })
 @Transactional
 class TwendeApplicationTests {
@@ -395,7 +398,7 @@ class TwendeApplicationTests {
             .andExpect(jsonPath("$.data.content[0].id").value(newerPlaceId))
             .andExpect(jsonPath("$.data.content[0].name").value("Newer Place"))
             .andExpect(jsonPath("$.data.content[0].images.length()").value(2))
-            .andExpect(jsonPath("$.data.content[0].images[0]").value("https://images.example/newer-place-1.jpg"))
+            .andExpect(jsonPath("$.data.content[0].images[0]").value("https://res.cloudinary.com/test-cloud/image/upload/v1/newer-place-1.jpg"))
             .andExpect(jsonPath("$.data.content[0].creator.username").value(contributor.username()))
             .andExpect(jsonPath("$.data.content[0].creator.email").doesNotExist())
             .andExpect(jsonPath("$.data.content[0].bookmarked").value(true))
@@ -421,7 +424,7 @@ class TwendeApplicationTests {
           "description": "A quiet place to visit.",
           "latitude": -1.2,
           "longitude": 36.8,
-          "images": ["https://images.example/one.jpg", "https://images.example/two.jpg"]
+          "images": ["https://res.cloudinary.com/test-cloud/image/upload/v1/one.jpg", "https://res.cloudinary.com/test-cloud/image/upload/v1/two.jpg"]
         }
         """;
 
@@ -437,7 +440,7 @@ class TwendeApplicationTests {
     mockMvc.perform(post("/api/places")
             .header("Authorization", "Bearer " + creator.accessToken())
             .contentType(MediaType.APPLICATION_JSON)
-            .content(createPlaceBody.replace("\"images\": [\"https://images.example/one.jpg\", \"https://images.example/two.jpg\"]", "\"images\": [\"\"]")))
+            .content(createPlaceBody.replace("\"images\": [\"https://res.cloudinary.com/test-cloud/image/upload/v1/one.jpg\", \"https://res.cloudinary.com/test-cloud/image/upload/v1/two.jpg\"]", "\"images\": [\"\"]")))
         .andExpect(status().isBadRequest());
     mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + creator.accessToken()))
         .andExpect(status().isOk())
@@ -546,7 +549,7 @@ class TwendeApplicationTests {
             .content(createPlaceBody.replace("Hidden Falls", "Updated Falls").replace("one.jpg", "updated.jpg")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.name").value("Updated Falls"))
-        .andExpect(jsonPath("$.data.images[0]").value("https://images.example/updated.jpg"));
+        .andExpect(jsonPath("$.data.images[0]").value("https://res.cloudinary.com/test-cloud/image/upload/v1/updated.jpg"));
     mockMvc.perform(delete("/api/places/{placeId}", placeId)
             .header("Authorization", "Bearer " + otherUser.accessToken()))
         .andExpect(status().isForbidden());
@@ -597,7 +600,7 @@ class TwendeApplicationTests {
 
         private String createPlace(TestUser creator, String name, String imagePrefix) throws Exception {
         String body = """
-            {"name":"%s","category":"waterfall","countyCode":"047","description":"A place for integration tests.","latitude":-1.2,"longitude":36.8,"images":["https://images.example/%s-1.jpg","https://images.example/%s-2.jpg"]}
+            {"name":"%s","category":"waterfall","countyCode":"047","description":"A place for integration tests.","latitude":-1.2,"longitude":36.8,"images":["https://res.cloudinary.com/test-cloud/image/upload/v1/%s-1.jpg","https://res.cloudinary.com/test-cloud/image/upload/v1/%s-2.jpg"]}
             """.formatted(name, imagePrefix, imagePrefix);
         MvcResult result = mockMvc.perform(post("/api/places")
                 .header("Authorization", "Bearer " + creator.accessToken())

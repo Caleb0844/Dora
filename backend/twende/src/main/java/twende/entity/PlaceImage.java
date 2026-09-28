@@ -28,6 +28,9 @@ public class PlaceImage {
     @Column(name = "image_url", length = 2048, nullable = false)
     private String imageUrl;
 
+    @Column(name = "cloudinary_public_id", length = 255)
+    private String cloudinaryPublicId;
+
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
 
@@ -37,9 +40,18 @@ public class PlaceImage {
     protected PlaceImage() {
     }
 
-    PlaceImage(String imageUrl, int sortOrder) {
+    PlaceImage(
+            String imageUrl,
+            String cloudinaryPublicId,
+            int sortOrder
+    ) {
         this.imageUrl = imageUrl;
+        this.cloudinaryPublicId = cloudinaryPublicId;
         this.sortOrder = sortOrder;
+    }
+
+    PlaceImage(String imageUrl, int sortOrder) {
+        this(imageUrl, null, sortOrder);
     }
 
     @PrePersist
@@ -47,6 +59,7 @@ public class PlaceImage {
         if (id == null) {
             id = UUID.randomUUID().toString();
         }
+
         createdAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
@@ -64,6 +77,10 @@ public class PlaceImage {
 
     public String getImageUrl() {
         return imageUrl;
+    }
+
+    public String getCloudinaryPublicId() {
+        return cloudinaryPublicId;
     }
 
     public int getSortOrder() {
