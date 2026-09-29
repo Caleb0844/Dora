@@ -17,4 +17,14 @@ public interface NearbyPlaceProjection {
     BigDecimal getLongitude();
 
     Double getDistanceKm();
+
+    String getThumbnailUrl();
+
+    String getCreatorId();
+
+    String getCreatorUsername();
+
+    String getCreatorDisplayName();
+
+    String getCreatorProfileImage();
 }

@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -15,7 +14,10 @@ import {
 import { AppHeader } from '@/components/app-header';
 import { BottomNav } from '@/components/bottom-nav';
 import { TwendePost } from '@/components/twende-post';
-import { getNearbyPlaces } from '@/features/places/nearby-service';
+import {
+  getNearbyPlaces,
+  type NearbyPlace,
+} from '@/features/places/nearby-service';
 import { checkInPlace } from '@/features/profile/check-in-service';
 import { getAllVisitedPlaceIds } from '@/features/profile/visited-service';
 import { getCurrentLocation } from '@/services/location/location-service';
@@ -23,16 +25,11 @@ import { theme } from '@/theme';
 
 const distances = ['1', '5', '10', '15', '20', '30', '40', 'Custom', 'All'];
 
-type NearbyPlace = {
-  id: string;
-  name: string;
-  category: string;
-  county: string;
-  distanceKm?: number | null;
-};
+
 
 export default function NearbyScreen() {
   const [selected, setSelected] = useState('20');
+  const [distanceMenuOpen, setDistanceMenuOpen] = useState(false);
   const [places, setPlaces] = useState<NearbyPlace[]>([]);
   const [visitedIds, setVisitedIds] = useState<Set<string>>(new Set());
   const [visitedIdsLoaded, setVisitedIdsLoaded] = useState(false);
@@ -109,6 +106,8 @@ export default function NearbyScreen() {
   }
 
   function handleDistancePress(distance: string) {
+    setDistanceMenuOpen(false);
+
     if (distance === 'All') {
       router.replace('/');
       return;
@@ -128,26 +127,46 @@ export default function NearbyScreen() {
       <AppHeader />
 
       <View style={styles.filterSection}>
-        <Text style={styles.title}>Near You</Text>
+        <View style={styles.filterHeader}>
+          <Text style={styles.title}>Places Near You</Text>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filters}
-        >
-          {distances.map((distance) => {
-            const active = selected === distance;
+          <Pressable
+            style={styles.distanceSelector}
+            onPress={() =>
+              setDistanceMenuOpen((current) => !current)
+            }
+          >
+            <Text style={styles.distanceSelectorText}>
+              {selected === 'Custom' || selected === 'All'
+                ? selected
+                : `${selected} km`}
+            </Text>
 
-            return (
+            <Text style={styles.chevron}>
+              {distanceMenuOpen ? '▲' : '▼'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {distanceMenuOpen && (
+          <View style={styles.distanceMenu}>
+            {distances.map((distance) => (
               <Pressable
                 key={distance}
-                style={[styles.filter, active && styles.activeFilter]}
-                onPress={() => handleDistancePress(distance)}
+                style={[
+                  styles.distanceOption,
+                  selected === distance &&
+                    styles.activeDistanceOption,
+                ]}
+                onPress={() =>
+                  handleDistancePress(distance)
+                }
               >
                 <Text
                   style={[
-                    styles.filterText,
-                    active && styles.activeFilterText,
+                    styles.distanceOptionText,
+                    selected === distance &&
+                      styles.activeDistanceOptionText,
                   ]}
                 >
                   {distance === 'Custom' || distance === 'All'
@@ -155,9 +174,9 @@ export default function NearbyScreen() {
                     : `${distance} km`}
                 </Text>
               </Pressable>
-            );
-          })}
-        </ScrollView>
+            ))}
+          </View>
+        )}
       </View>
 
       {loading ? (
@@ -179,11 +198,15 @@ export default function NearbyScreen() {
           }
           renderItem={({ item }) => (
             <TwendePost
+              id={item.id}
               name={item.name}
               category={item.category}
               county={item.county}
               distanceKm={item.distanceKm}
-              id={item.id}
+              thumbnailUrl={item.thumbnailUrl}
+              creatorUsername={item.creatorUsername}
+              creatorDisplayName={item.creatorDisplayName}
+              creatorProfileImage={item.creatorProfileImage}
               visited={visitedIds.has(item.id)}
               visiting={!visitedIdsLoaded || checkingInIds.has(item.id)}
               onVisitedPress={handleVisitedPress}
@@ -205,28 +228,67 @@ const styles = StyleSheet.create({
   filterSection: {
     paddingHorizontal: 16,
     paddingVertical: 14,
+    position: 'relative',
+    zIndex: 10,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   title: {
     fontSize: 24,
     fontWeight: '800',
     color: theme.colors.text,
-    marginBottom: 12,
   },
-  filters: {
-    gap: 8,
-    paddingRight: 16,
-  },
-  filter: {
+  distanceSelector: {
+    minWidth: 105,
+    height: 42,
     paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
+    borderRadius: 12,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
-  activeFilter: {
-    backgroundColor: theme.colors.green,
-    borderColor: theme.colors.green,
+  distanceSelectorText: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  chevron: {
+    color: theme.colors.textSecondary,
+    fontSize: 10,
+  },
+  distanceMenu: {
+    position: 'absolute',
+    top: 62,
+    right: 16,
+    width: 130,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    overflow: 'hidden',
+    zIndex: 20,
+  },
+  distanceOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  activeDistanceOption: {
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  distanceOptionText: {
+    color: theme.colors.text,
+    fontSize: 14,
+  },
+  activeDistanceOptionText: {
+    color: theme.colors.green,
+    fontWeight: '800',
   },
   filterText: {
     color: theme.colors.textSecondary,

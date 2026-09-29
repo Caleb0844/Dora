@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import twende.dto.place.CreatePlaceRequest;
+import twende.dto.place.NearbyPlaceResponse;
 import twende.dto.place.NearbyPlacesResponse;
 import twende.dto.place.PageResponse;
 import twende.dto.place.PlaceResponse;
@@ -337,7 +338,7 @@ public class PlaceService {
         }
 
         SearchBounds bounds = bounds(latitude.doubleValue(), longitude.doubleValue(), radius);
-        List<PlaceSummaryResponse> places = placeRepository.findNearby(
+        List<NearbyPlaceResponse> places = placeRepository.findNearby(
                         latitude,
                         longitude,
                         bounds.minLatitude(),
@@ -512,8 +513,8 @@ public class PlaceService {
         );
     }
 
-    private PlaceSummaryResponse toNearbySummary(NearbyPlaceProjection place) {
-        return new PlaceSummaryResponse(
+    private NearbyPlaceResponse toNearbySummary(NearbyPlaceProjection place) {
+        return new NearbyPlaceResponse(
                 place.getId(),
                 place.getName(),
                 place.getCategory(),
@@ -521,8 +522,11 @@ public class PlaceService {
                 place.getLatitude(),
                 place.getLongitude(),
                 place.getDistanceKm(),
-                null,
-                null
+                place.getThumbnailUrl(),
+                place.getCreatorId(),
+                place.getCreatorUsername(),
+                place.getCreatorDisplayName(),
+                place.getCreatorProfileImage()
         );
     }
 

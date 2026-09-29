@@ -60,10 +60,24 @@ public interface PlaceRepository extends JpaRepository<Place, String>, JpaSpecif
                        POWER(SIN(RADIANS(p.latitude - :latitude) / 2), 2)
                        + COS(RADIANS(:latitude)) * COS(RADIANS(p.latitude))
                        * POWER(SIN(RADIANS(p.longitude - :longitude) / 2), 2)
-                   )))) AS distanceKm
+                   )))) AS distanceKm,
+                   (
+                       SELECT pi.image_url
+                       FROM place_images pi
+                       WHERE pi.place_id = p.id
+                       ORDER BY pi.sort_order ASC
+                       LIMIT 1
+                   ) AS thumbnailUrl,
+                   creator.id AS creatorId,
+                   creator.username AS creatorUsername,
+                   creator.display_name AS creatorDisplayName,
+                   creator.profile_image_url AS creatorProfileImage
             FROM places p
             JOIN categories c ON c.id = p.category_id
             JOIN counties co ON co.id = p.county_id
+            JOIN users creator
+              ON creator.id = p.created_by
+             AND creator.status = 'ACTIVE'
             WHERE p.status = 'PUBLISHED'
               AND p.latitude BETWEEN :minLatitude AND :maxLatitude
               AND ((:crossesAntimeridian = FALSE AND p.longitude BETWEEN :minLongitude AND :maxLongitude)

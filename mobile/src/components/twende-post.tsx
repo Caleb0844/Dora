@@ -1,4 +1,11 @@
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { router } from 'expo-router';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { PostActions } from '@/components/post-actions';
 import { theme } from '@/theme';
@@ -9,6 +16,10 @@ type TwendePostProps = {
   category: string;
   county: string;
   distanceKm?: number | null;
+  thumbnailUrl?: string | null;
+  creatorUsername?: string;
+  creatorDisplayName?: string | null;
+  creatorProfileImage?: string | null;
   visited?: boolean;
   visiting?: boolean;
   bookmarked?: boolean;
@@ -22,6 +33,10 @@ export function TwendePost({
   category,
   county,
   distanceKm,
+  thumbnailUrl,
+  creatorUsername,
+  creatorDisplayName,
+  creatorProfileImage,
   visited = false,
   visiting = false,
   bookmarked = false,
@@ -30,27 +45,75 @@ export function TwendePost({
 }: TwendePostProps) {
   return (
     <View style={styles.post}>
-      <View style={styles.postHeader}>
-        <View style={styles.avatar} />
+      <Pressable
+        style={styles.postHeader}
+        onPress={() => {
+          if (!creatorUsername) {
+            return;
+          }
+
+          router.push({
+            pathname: '/user/[username]',
+            params: { username: creatorUsername },
+          });
+        }}
+      >
+        {creatorProfileImage ? (
+          <Image
+            source={{ uri: creatorProfileImage }}
+            style={styles.avatarImage}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarLetter}>
+              {creatorDisplayName?.charAt(0)?.toUpperCase() ??
+                creatorUsername?.charAt(0)?.toUpperCase() ??
+                'T'}
+            </Text>
+          </View>
+        )}
 
         <View style={styles.creatorInfo}>
-          <Text style={styles.creator}>Twende Explorer</Text>
+          <Text style={styles.creator}>
+            {creatorDisplayName ?? creatorUsername ?? 'Twende Explorer'}
+          </Text>
+
+          <Text style={styles.username}>
+            {creatorUsername ? `@${creatorUsername}` : ''}
+          </Text>
 
           <Text style={styles.location}>
             {county}
             {distanceKm != null
-              ? ` · ${distanceKm.toFixed(1)} km away`
+              ? ` · ${distanceKm.toFixed(1)} km`
               : ''}
           </Text>
         </View>
-      </View>
+      </Pressable>
 
-      <Image
-        source={{
-          uri: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e',
-        }}
-        style={styles.image}
-      />
+      <Pressable
+        onPress={() =>
+          router.push({
+            pathname: '/place/[id]',
+            params: { id },
+          })
+        }
+      >
+        {thumbnailUrl ? (
+          <Image
+            source={{ uri: thumbnailUrl }}
+            style={styles.image}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        ) : (
+          <View style={[styles.image, styles.noImage]}>
+            <Text style={styles.noImageText}>No image</Text>
+          </View>
+        )}
+      </Pressable>
 
       <PostActions
         visited={visited}
@@ -60,10 +123,18 @@ export function TwendePost({
         onBookmarkPress={() => onBookmarkPress?.(id)}
       />
 
-      <View style={styles.details}>
+      <Pressable
+        style={styles.details}
+        onPress={() =>
+          router.push({
+            pathname: '/place/[id]',
+            params: { id },
+          })
+        }
+      >
         <Text style={styles.placeName}>{name}</Text>
         <Text style={styles.category}>{category}</Text>
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -78,12 +149,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
   },
-  avatar: {
+  avatarImage: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: theme.colors.green,
     marginRight: 10,
+    backgroundColor: theme.colors.border,
+  },
+  avatarFallback: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.green,
+  },
+  avatarLetter: {
+    color: theme.colors.white,
+    fontSize: 16,
+    fontWeight: '800',
   },
   creatorInfo: {
     flex: 1,
@@ -92,6 +177,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: theme.colors.text,
+  },
+  username: {
+    marginTop: 1,
+    fontSize: 12,
+    color: theme.colors.green,
   },
   location: {
     fontSize: 13,
@@ -102,6 +192,13 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 360,
     backgroundColor: theme.colors.border,
+  },
+  noImage: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noImageText: {
+    color: theme.colors.textSecondary,
   },
   details: {
     paddingHorizontal: 14,
