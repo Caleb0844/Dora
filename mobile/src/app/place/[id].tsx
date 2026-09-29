@@ -24,7 +24,11 @@ import { useBookmarkStore } from '@/store/bookmarks';
 import { theme } from '@/theme';
 
 export default function PlaceDetailsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, fromProfile } = useLocalSearchParams<{
+    id: string;
+    fromProfile?: string;
+  }>();
+
   const placeId = Array.isArray(id) ? id[0] : id;
   const { width: windowWidth } = useWindowDimensions();
 
@@ -122,7 +126,20 @@ const url =
     <View style={styles.screen}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {place.creator && (
-          <View style={styles.creatorHeader}>
+          <Pressable
+            style={styles.creatorHeader}
+            onPress={() => {
+              if (fromProfile === '1') {
+                router.back();
+                return;
+              }
+
+              router.push({
+                pathname: '/user/[username]',
+                params: { username: place.creator.username },
+              });
+            }}
+          >
             <View style={styles.headerAvatar}>
               {place.creator.profileImage ? (
                 <Image
@@ -141,7 +158,7 @@ const url =
             <Text style={styles.headerUsername}>
               @{place.creator.username}
             </Text>
-          </View>
+          </Pressable>
         )}
 
         <View style={styles.hero}>
@@ -272,7 +289,20 @@ const url =
           </Pressable>
 
           {place.creator && (
-            <View style={styles.creator}>
+            <Pressable
+              style={styles.creator}
+              onPress={() => {
+                if (fromProfile === '1') {
+                  router.back();
+                  return;
+                }
+
+                router.push({
+                  pathname: '/user/[username]',
+                  params: { username: place.creator.username },
+                });
+              }}
+            >
               <View style={styles.avatar}>
                 {place.creator.profileImage ? (
                   <Image
@@ -300,7 +330,7 @@ const url =
                   </Text>
                 )}
               </View>
-            </View>
+            </Pressable>
           )}
 
           <View style={styles.descriptionSection}>

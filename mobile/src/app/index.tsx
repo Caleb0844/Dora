@@ -63,7 +63,15 @@ export default function HomeScreen() {
         contentContainerStyle={styles.feed}
         renderItem={({ item }) => (
           <View style={styles.post}>
-            <View style={styles.postHeader}>
+            <Pressable
+              style={styles.postHeader}
+              onPress={() =>
+                router.push({
+                  pathname: '/user/[username]',
+                  params: { username: item.creator.username },
+                })
+              }
+            >
               {item.creator.profileImage ? (
                 <Image
                   source={{ uri: item.creator.profileImage }}
@@ -85,7 +93,7 @@ export default function HomeScreen() {
                   @{item.creator.username} · {item.county}
                 </Text>
               </View>
-            </View>
+            </Pressable>
 
             <Pressable
               onPress={() =>
