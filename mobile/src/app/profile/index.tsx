@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import { getAddedPlaces } from '@/features/profile/added-service';
 import { router } from 'expo-router';
@@ -35,6 +36,10 @@ import { getSavedPlaces } from '@/features/profile/saved-service';
 import { logout } from '@/features/auth/auth-service';
 import { useBookmarkStore } from '@/store/bookmarks';
 import { deletePlace } from '@/services/api/place-service';
+import {
+  deleteCloudinaryUploadByToken,
+  uploadImageToCloudinary,
+} from '@/services/api/cloudinary-service';
 import { theme } from '@/theme';
 
 export default function ProfileScreen() {
@@ -45,6 +50,8 @@ export default function ProfileScreen() {
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editProfileImageUrl, setEditProfileImageUrl] = useState('');
+  const [selectedProfileImageUri, setSelectedProfileImageUri] =
+    useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfilePlaceTab>('saved');
   const [search, setSearch] = useState('');
   const [sortField, setSortField] = useState<'name' | 'date'>('date');
@@ -115,23 +122,95 @@ export default function ProfileScreen() {
     setEditDisplayName(profile?.displayName ?? '');
     setEditUsername(profile?.username ?? '');
     setEditProfileImageUrl(profile?.profileImage ?? '');
+    setSelectedProfileImageUri(null);
     setEditVisible(true);
   }
 
+  async function handleChooseProfilePhoto() {
+    const permission =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (permission.status !== 'granted') {
+      Alert.alert(
+        'Photo permission required',
+        'Twende needs access to your photos to choose a profile image.'
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setSelectedProfileImageUri(result.assets[0].uri);
+    }
+  }
+
+  async function handleTakeProfilePhoto() {
+    const permission =
+      await ImagePicker.requestCameraPermissionsAsync();
+
+    if (permission.status !== 'granted') {
+      Alert.alert(
+        'Camera permission required',
+        'Twende needs camera access to take a profile photo.'
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setSelectedProfileImageUri(result.assets[0].uri);
+    }
+  }
+
   async function handleSaveProfile() {
+    let uploadedDeleteToken: string | null = null;
+
     try {
       setSavingProfile(true);
+
+      let profileImageUrl = editProfileImageUrl.trim();
+
+      if (selectedProfileImageUri) {
+        const upload = await uploadImageToCloudinary(
+          selectedProfileImageUri
+        );
+
+        profileImageUrl = upload.url;
+        uploadedDeleteToken = upload.deleteToken;
+      }
+
       const updatedProfile = await updateMyProfile({
         displayName: editDisplayName.trim(),
         username: editUsername.trim(),
-        profileImageUrl: editProfileImageUrl.trim(),
+        profileImageUrl,
       });
+
       setProfile(updatedProfile);
+      setSelectedProfileImageUri(null);
       setEditVisible(false);
-    } catch {
+    } catch (error: any) {
+      if (uploadedDeleteToken) {
+        await Promise.allSettled([
+          deleteCloudinaryUploadByToken(uploadedDeleteToken),
+        ]);
+      }
+
       Alert.alert(
         'Profile update failed',
-        'Check the details and try again.'
+        error?.response?.data?.message ??
+          error?.message ??
+          'Check the details and try again.'
       );
     } finally {
       setSavingProfile(false);
@@ -402,15 +481,58 @@ export default function ProfileScreen() {
               autoCapitalize="none"
               style={styles.modalInput}
             />
-            <TextInput
-              value={editProfileImageUrl}
-              onChangeText={setEditProfileImageUrl}
-              placeholder="Profile image URL"
-              placeholderTextColor={theme.colors.textSecondary}
-              autoCapitalize="none"
-              keyboardType="url"
-              style={styles.modalInput}
-            />
+            <View style={styles.profileImageEditor}>
+              {selectedProfileImageUri || editProfileImageUrl ? (
+                <Image
+                  source={{
+                    uri:
+                      selectedProfileImageUri ??
+                      editProfileImageUrl,
+                  }}
+                  style={styles.editProfileImage}
+                />
+              ) : (
+                <View style={styles.editProfileImageFallback}>
+                  <Ionicons
+                    name="person"
+                    size={34}
+                    color={theme.colors.textSecondary}
+                  />
+                </View>
+              )}
+
+              <View style={styles.profileImageActions}>
+                <Pressable
+                  style={styles.profileImageButton}
+                  onPress={handleChooseProfilePhoto}
+                  disabled={savingProfile}
+                >
+                  <Ionicons
+                    name="images-outline"
+                    size={18}
+                    color={theme.colors.text}
+                  />
+                  <Text style={styles.profileImageButtonText}>
+                    Choose photo
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.profileImageButton}
+                  onPress={handleTakeProfilePhoto}
+                  disabled={savingProfile}
+                >
+                  <Ionicons
+                    name="camera-outline"
+                    size={18}
+                    color={theme.colors.text}
+                  />
+                  <Text style={styles.profileImageButtonText}>
+                    Take photo
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
 
             <View style={styles.modalActions}>
               <Pressable
@@ -663,6 +785,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     marginBottom: 12,
+  },
+  profileImageEditor: {
+    marginBottom: 14,
+    alignItems: 'center',
+  },
+  editProfileImage: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    marginBottom: 12,
+  },
+  editProfileImageFallback: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  profileImageActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  profileImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: theme.colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  profileImageButtonText: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: '700',
   },
   modalActions: {
     flexDirection: 'row',

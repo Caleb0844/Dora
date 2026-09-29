@@ -2,6 +2,8 @@ package twende.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import twende.dto.user.LocationRequest;
 import twende.dto.user.PublicProfileResponse;
 import twende.dto.user.UpdateUserRequest;
@@ -23,15 +25,18 @@ public class UserService {
     private final UserRepository userRepository;
     private final PlaceRepository placeRepository;
     private final CheckInRepository checkInRepository;
+    private final CloudinaryService cloudinaryService;
 
     public UserService(
             UserRepository userRepository,
             PlaceRepository placeRepository,
-            CheckInRepository checkInRepository
+            CheckInRepository checkInRepository,
+            CloudinaryService cloudinaryService
     ) {
         this.userRepository = userRepository;
         this.placeRepository = placeRepository;
         this.checkInRepository = checkInRepository;
+        this.cloudinaryService = cloudinaryService;
     }
 
     @Transactional(readOnly = true)
@@ -76,8 +81,30 @@ public class UserService {
             user.setUsername(username);
         }
         if (request.profileImageUrl() != null) {
-            user.setProfileImageUrl(request.profileImageUrl().isBlank() ? null : request.profileImageUrl().trim());
+            String previousProfileImageUrl = user.getProfileImageUrl();
+
+            String newProfileImageUrl =
+                    request.profileImageUrl().isBlank()
+                            ? null
+                            : request.profileImageUrl().trim();
+
+            user.setProfileImageUrl(newProfileImageUrl);
+
+            if (previousProfileImageUrl != null
+                    && !previousProfileImageUrl.isBlank()
+                    && !previousProfileImageUrl.equals(newProfileImageUrl)) {
+
+                String previousPublicId =
+                        cloudinaryPublicIdOrNull(previousProfileImageUrl);
+
+                if (previousPublicId != null) {
+                    scheduleCloudinaryDeletionAfterCommit(
+                            previousPublicId
+                    );
+                }
+            }
         }
+
         return toResponse(user);
     }
 
@@ -87,6 +114,36 @@ public class UserService {
         user.setLastLatitude(request.latitude());
         user.setLastLongitude(request.longitude());
         return new LocationRequest(user.getLastLatitude(), user.getLastLongitude());
+    }
+
+    private String cloudinaryPublicIdOrNull(String imageUrl) {
+        try {
+            return cloudinaryService.extractPublicId(imageUrl);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private void scheduleCloudinaryDeletionAfterCommit(
+            String publicId
+    ) {
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            cloudinaryService.deleteImageByPublicId(publicId);
+                        } catch (RuntimeException exception) {
+                            System.err.println(
+                                    "Failed to clean up old profile image "
+                                            + publicId
+                                            + ": "
+                                            + exception.getMessage()
+                            );
+                        }
+                    }
+                }
+        );
     }
 
     private UserProfileResponse toResponse(User user) {
