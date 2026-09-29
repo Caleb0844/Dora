@@ -435,7 +435,7 @@ export default function ProfileScreen() {
 
                 {visitedPlaces.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Text style={styles.emptyTitle}>No places visited yet</Text>
+                    <Text style={styles.emptyTitle}>No places explored yet</Text>
 
                     <Pressable style={styles.exploreButton}>
                       <Text style={styles.exploreButtonText}>Explore</Text>

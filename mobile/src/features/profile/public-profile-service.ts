@@ -13,6 +13,8 @@ export type PublicProfile = {
   placesVisited: number;
 };
 
+export type PublicProfileSort = 'newest' | 'oldest';
+
 export async function getPublicProfile(
   username: string
 ): Promise<PublicProfile> {
@@ -26,12 +28,19 @@ export async function getPublicProfile(
 export async function getPublicProfilePlaces(
   username: string,
   page = 0,
-  size = 12
+  size = 12,
+  search = '',
+  sort: PublicProfileSort = 'newest'
 ): Promise<AddedPlacesPage> {
   const response = await api.get(
     `/api/users/${encodeURIComponent(username)}/places`,
     {
-      params: { page, size },
+      params: {
+        page,
+        size,
+        search: search.trim() || undefined,
+        sort,
+      },
     }
   );
 

@@ -37,10 +37,26 @@ public class PublicUserController {
     @Operation(summary = "List a user's public places", description = "Returns paginated published place summaries for an active username.")
     public ResponseEntity<ApiResponse<PageResponse<PlaceSummaryResponse>>> getPlaces(
             @PathVariable String username,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "newest") String sort,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        PageResponse<PlaceSummaryResponse> places = placeService.listPublicPlacesByUsername(username, page, size);
-        return ResponseEntity.ok(new ApiResponse<>(true, "User places retrieved successfully.", places));
+        PageResponse<PlaceSummaryResponse> places =
+                placeService.listPublicPlacesByUsername(
+                        username,
+                        search,
+                        sort,
+                        page,
+                        size
+                );
+
+        return ResponseEntity.ok(
+                new ApiResponse<>(
+                        true,
+                        "User places retrieved successfully.",
+                        places
+                )
+        );
     }
 }

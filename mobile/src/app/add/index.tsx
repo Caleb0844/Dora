@@ -46,7 +46,6 @@ export default function AddPlaceScreen() {
   const [longitude, setLongitude] = useState<number | null>(null);
   const [gettingLocation, setGettingLocation] = useState(false);
   const [images, setImages] = useState<string[]>([]);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -128,6 +127,39 @@ export default function AddPlaceScreen() {
     if (!result.canceled) {
       const selected = result.assets.map((asset) => asset.uri);
       setImages((current) => [...current, ...selected].slice(0, 10));
+    }
+  }
+
+  async function handleTakePhoto() {
+    if (images.length >= 10) {
+      Alert.alert(
+        'Image limit reached',
+        'You can add up to 10 images.'
+      );
+      return;
+    }
+
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (permission.status !== 'granted') {
+      Alert.alert(
+        'Camera permission required',
+        'Twende needs camera access to take place photos.'
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      const photoUri = result.assets[0].uri;
+
+      setImages((current) =>
+        [...current, photoUri].slice(0, 10)
+      );
     }
   }
 
@@ -235,29 +267,6 @@ export default function AddPlaceScreen() {
       );
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function handleTestUpload() {
-    if (images.length === 0) {
-      Alert.alert('No image selected', 'Select at least one image first.');
-      return;
-    }
-
-    try {
-      setUploadingImage(true);
-      const upload = await uploadImageToCloudinary(images[0]);
-      Alert.alert(
-        'Upload successful',
-        `URL: ${upload.url}\nDelete token: ${upload.deleteToken ? 'received' : 'missing'}`
-      );
-    } catch (error: any) {
-  Alert.alert(
-    'Upload failed',
-    error?.message ?? 'Could not upload image to Cloudinary.'
-  );
-} finally {
-      setUploadingImage(false);
     }
   }
 
@@ -410,14 +419,31 @@ export default function AddPlaceScreen() {
           ))}
 
           {images.length < 10 && (
-            <Pressable style={styles.imageBox} onPress={handlePickImages}>
-              <Ionicons
-                name="camera-outline"
-                size={34}
-                color={theme.colors.muted}
-              />
-              <Text style={styles.imageAdd}>Add</Text>
-            </Pressable>
+            <>
+              <Pressable
+                style={styles.imageBox}
+                onPress={handlePickImages}
+              >
+                <Ionicons
+                  name="images-outline"
+                  size={32}
+                  color={theme.colors.muted}
+                />
+                <Text style={styles.imageAdd}>Gallery</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.imageBox}
+                onPress={handleTakePhoto}
+              >
+                <Ionicons
+                  name="camera-outline"
+                  size={32}
+                  color={theme.colors.muted}
+                />
+                <Text style={styles.imageAdd}>Camera</Text>
+              </Pressable>
+            </>
           )}
         </View>
 
@@ -426,16 +452,6 @@ export default function AddPlaceScreen() {
             ? `${images.length} image(s) selected`
             : `Add at least ${2 - images.length} more image(s)`}
         </Text>
-
-        <Pressable
-          style={styles.testUpload}
-          onPress={handleTestUpload}
-          disabled={uploadingImage}
-        >
-          <Text style={styles.testUploadText}>
-            {uploadingImage ? 'Uploading...' : 'Test Cloudinary Upload'}
-          </Text>
-        </Pressable>
 
         <Text style={styles.label}>LOCATION</Text>
 
@@ -635,19 +651,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 15,
     color: theme.colors.textSecondary,
-  },
-  testUpload: {
-    marginTop: 16,
-    height: 50,
-    borderRadius: 14,
-    backgroundColor: theme.colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  testUploadText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: theme.colors.white,
   },
   locationMode: {
     height: 58,

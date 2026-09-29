@@ -1,13 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Image,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
@@ -17,6 +19,7 @@ import {
   getPublicProfilePlaces,
   type PublicProfile,
   type PublicProfilePlace,
+  type PublicProfileSort,
 } from '@/features/profile/public-profile-service';
 import { theme } from '@/theme';
 
@@ -32,6 +35,79 @@ export default function PublicProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [sort, setSort] =
+    useState<PublicProfileSort>('newest');
+  const [sortMenuOpen, setSortMenuOpen] =
+    useState(false);
+  const [searchOpen, setSearchOpen] =
+    useState(false);
+  const [searchQuery, setSearchQuery] =
+    useState('');
+
+  const initialPlacesLoaded = useRef(false);
+  const profileSearchRequestId = useRef(0);
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const avatarScale = scrollY.interpolate({
+    inputRange: [0, 150],
+    outputRange: [1, 0.42],
+    extrapolate: 'clamp',
+  });
+
+  const avatarTranslateX = scrollY.interpolate({
+    inputRange: [0, 150],
+    outputRange: [0, -105],
+    extrapolate: 'clamp',
+  });
+
+  const avatarTranslateY = scrollY.interpolate({
+    inputRange: [0, 150],
+    outputRange: [0, 72],
+    extrapolate: 'clamp',
+  });
+
+  const identityScale = scrollY.interpolate({
+    inputRange: [0, 150],
+    outputRange: [1, 0.72],
+    extrapolate: 'clamp',
+  });
+
+  const identityTranslateX = scrollY.interpolate({
+    inputRange: [0, 150],
+    outputRange: [0, 34],
+    extrapolate: 'clamp',
+  });
+
+  const identityTranslateY = scrollY.interpolate({
+    inputRange: [0, 150],
+    outputRange: [0, -24],
+    extrapolate: 'clamp',
+  });
+
+  const xpOpacity = scrollY.interpolate({
+    inputRange: [20, 90],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const largeProfileOpacity = scrollY.interpolate({
+    inputRange: [135, 160],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const compactHeaderOpacity = scrollY.interpolate({
+    inputRange: [145, 165],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const compactHeaderTranslateY = scrollY.interpolate({
+    inputRange: [145, 165],
+    outputRange: [4, 0],
+    extrapolate: 'clamp',
+  });
 
   useEffect(() => {
     if (!username) {
@@ -50,7 +126,13 @@ export default function PublicProfileScreen() {
 
       const [profileData, placesData] = await Promise.all([
         getPublicProfile(targetUsername),
-        getPublicProfilePlaces(targetUsername, 0, PAGE_SIZE),
+        getPublicProfilePlaces(
+          targetUsername,
+          0,
+          PAGE_SIZE,
+          '',
+          'newest'
+        ),
       ]);
 
       setProfile(profileData);
@@ -66,9 +148,60 @@ export default function PublicProfileScreen() {
           'Could not load this profile.'
       );
     } finally {
+      initialPlacesLoaded.current = true;
       setLoading(false);
     }
   }
+
+  async function reloadPlaces(
+    targetSearch: string,
+    targetSort: PublicProfileSort
+  ) {
+    if (!username) {
+      return;
+    }
+
+    const requestId = ++profileSearchRequestId.current;
+
+    try {
+      const placesData = await getPublicProfilePlaces(
+        username,
+        0,
+        PAGE_SIZE,
+        targetSearch,
+        targetSort
+      );
+
+      if (requestId !== profileSearchRequestId.current) {
+        return;
+      }
+
+      setPlaces(placesData.content);
+      setPage(placesData.page);
+      setLastPage(placesData.last);
+    } catch (requestError) {
+      if (requestId === profileSearchRequestId.current) {
+        console.log(
+          'Failed to filter public profile places:',
+          requestError
+        );
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!initialPlacesLoaded.current || !username) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      void reloadPlaces(searchQuery.trim(), sort);
+    }, 300);
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [searchQuery, sort, username]);
 
   async function loadMore() {
     if (!username || loadingMore || lastPage) {
@@ -83,7 +216,9 @@ export default function PublicProfileScreen() {
       const placesData = await getPublicProfilePlaces(
         username,
         nextPage,
-        PAGE_SIZE
+        PAGE_SIZE,
+        searchQuery,
+        sort
       );
 
       setPlaces((current) => [
@@ -100,17 +235,23 @@ export default function PublicProfileScreen() {
 
   if (loading) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView
+        style={styles.container}
+        edges={['top']}
+      >
         <View style={styles.center}>
           <ActivityIndicator size="large" />
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!profile || error) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView
+        style={styles.container}
+        edges={['top']}
+      >
         <View style={styles.errorHeader}>
           <Pressable
             style={styles.backButton}
@@ -129,61 +270,277 @@ export default function PublicProfileScreen() {
             {error ?? 'User not found.'}
           </Text>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-      >
-        <View style={styles.topBar}>
-          <Pressable
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Ionicons
-              name="arrow-back"
-              size={22}
-              color={theme.colors.text}
-            />
-          </Pressable>
-        </View>
+    <SafeAreaView
+      style={styles.container}
+      edges={['top']}
+    >
+      <View style={styles.topBar}>
+        <Pressable
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={22}
+            color={theme.colors.text}
+          />
+        </Pressable>
 
-        <View style={styles.profileSection}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.compactProfile,
+            {
+              opacity: compactHeaderOpacity,
+              transform: [
+                { translateY: compactHeaderTranslateY },
+              ],
+            },
+          ]}
+        >
           {profile.profileImage ? (
             <Image
               source={{ uri: profile.profileImage }}
-              style={styles.avatar}
+              style={styles.compactAvatar}
             />
           ) : (
-            <View style={styles.avatarFallback}>
+            <View style={styles.compactAvatarFallback}>
               <Ionicons
                 name="person"
-                size={38}
+                size={17}
                 color={theme.colors.textSecondary}
               />
             </View>
           )}
 
-          <Text style={styles.displayName}>
-            {profile.displayName ?? 'Twende User'}
-          </Text>
+          <View style={styles.compactIdentity}>
+            <Text
+              style={styles.compactName}
+              numberOfLines={1}
+            >
+              {profile.displayName ?? 'Twende User'}
+            </Text>
 
-          <Text style={styles.username}>
-            @{profile.username}
-          </Text>
-        </View>
+            <Text
+              style={styles.compactUsername}
+              numberOfLines={1}
+            >
+              @{profile.username}
+            </Text>
+          </View>
+        </Animated.View>
+      </View>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            Places added
-          </Text>
+      <Animated.ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[1]}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [
+            {
+              nativeEvent: {
+                contentOffset: { y: scrollY },
+              },
+            },
+          ],
+          { useNativeDriver: true }
+        )}
+      >
+        <Animated.View
+          style={[
+            styles.profileSection,
+            {
+              opacity: largeProfileOpacity,
+            },
+          ]}
+        >
+          <Animated.View
+            style={{
+              transform: [
+                { translateX: avatarTranslateX },
+                { translateY: avatarTranslateY },
+                { scale: avatarScale },
+              ],
+            }}
+          >
+            {profile.profileImage ? (
+              <Image
+                source={{ uri: profile.profileImage }}
+                style={styles.avatar}
+              />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Ionicons
+                  name="person"
+                  size={38}
+                  color={theme.colors.textSecondary}
+                />
+              </View>
+            )}
+          </Animated.View>
 
-          <Text style={styles.placeCount}>
-            {profile.placesContributed}
-          </Text>
+          <Animated.View
+            style={[
+              styles.largeIdentity,
+              {
+                transform: [
+                  { translateX: identityTranslateX },
+                  { translateY: identityTranslateY },
+                  { scale: identityScale },
+                ],
+              },
+            ]}
+          >
+            <Text style={styles.displayName}>
+              {profile.displayName ?? 'Twende User'}
+            </Text>
+
+            <Text style={styles.username}>
+              @{profile.username}
+            </Text>
+          </Animated.View>
+
+          <Animated.Text
+            style={[
+              styles.xp,
+              {
+                opacity: xpOpacity,
+              },
+            ]}
+          >
+            {profile.points} XP
+          </Animated.Text>
+        </Animated.View>
+
+        <View style={styles.stickyControls}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleGroup}>
+              <Text style={styles.sectionTitle}>
+                Places added
+              </Text>
+
+              <Text style={styles.placeCount}>
+                {profile.placesContributed}
+              </Text>
+            </View>
+
+            <View style={styles.controlButtons}>
+              <Pressable
+                style={styles.sortButton}
+                onPress={() => {
+                  setSearchOpen(false);
+                  setSearchQuery('');
+                  setSortMenuOpen((current) => !current);
+                }}
+              >
+                <Text style={styles.sortButtonText}>
+                  {sort === 'newest' ? 'Newest' : 'Oldest'}
+                </Text>
+
+                <Ionicons
+                  name={
+                    sortMenuOpen
+                      ? 'chevron-up'
+                      : 'chevron-down'
+                  }
+                  size={15}
+                  color={theme.colors.text}
+                />
+              </Pressable>
+
+              <Pressable
+                style={styles.iconButton}
+                onPress={() => {
+                  setSortMenuOpen(false);
+
+                  if (searchOpen) {
+                    setSearchQuery('');
+                    setSearchOpen(false);
+                  } else {
+                    setSearchOpen(true);
+                  }
+                }}
+              >
+                <Ionicons
+                  name={
+                    searchOpen
+                      ? 'close-outline'
+                      : 'search-outline'
+                  }
+                  size={21}
+                  color={theme.colors.text}
+                />
+              </Pressable>
+            </View>
+          </View>
+
+          {sortMenuOpen && (
+            <View style={styles.sortMenu}>
+              {(['newest', 'oldest'] as PublicProfileSort[]).map(
+                (option) => (
+                  <Pressable
+                    key={option}
+                    style={styles.sortOption}
+                    onPress={() => {
+                      setSort(option);
+                      setSortMenuOpen(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.sortOptionText,
+                        sort === option &&
+                          styles.activeSortOptionText,
+                      ]}
+                    >
+                      {option === 'newest'
+                        ? 'Newest'
+                        : 'Oldest'}
+                    </Text>
+                  </Pressable>
+                )
+              )}
+            </View>
+          )}
+
+          {searchOpen && (
+            <View style={styles.profileSearchBox}>
+              <Ionicons
+                name="search-outline"
+                size={18}
+                color={theme.colors.textSecondary}
+              />
+
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search places"
+                placeholderTextColor={
+                  theme.colors.textSecondary
+                }
+                style={styles.profileSearchInput}
+              />
+
+              {!!searchQuery && (
+                <Pressable
+                  onPress={() => setSearchQuery('')}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={18}
+                    color={theme.colors.textSecondary}
+                  />
+                </Pressable>
+              )}
+            </View>
+          )}
         </View>
 
         {places.length === 0 ? (
@@ -228,15 +585,15 @@ export default function PublicProfileScreen() {
             )}
           </>
         )}
-      </ScrollView>
-    </View>
+      </Animated.ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceSoft,
   },
   content: {
     paddingHorizontal: 16,
@@ -258,8 +615,51 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   topBar: {
-    paddingTop: 16,
+    minHeight: 58,
+    paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: 8,
+    backgroundColor: theme.colors.surfaceSoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  compactProfile: {
+    flex: 1,
+    marginLeft: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  compactAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: theme.colors.border,
+  },
+  compactAvatarFallback: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  compactIdentity: {
+    flex: 1,
+    marginLeft: 9,
+  },
+  compactName: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  compactUsername: {
+    marginTop: 1,
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
   },
   backButton: {
     width: 42,
@@ -274,6 +674,10 @@ const styles = StyleSheet.create({
   profileSection: {
     alignItems: 'center',
     paddingVertical: 20,
+    minHeight: 190,
+  },
+  largeIdentity: {
+    alignItems: 'center',
   },
   avatar: {
     width: 96,
@@ -302,12 +706,29 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  xp: {
+    marginTop: 6,
+    color: theme.colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  stickyControls: {
+    marginHorizontal: -16,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    backgroundColor: theme.colors.surfaceSoft,
+    zIndex: 20,
+  },
   sectionHeader: {
-    marginTop: 12,
-    marginBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  sectionTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
   },
   sectionTitle: {
     color: theme.colors.text,
@@ -318,6 +739,79 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     fontSize: 14,
     fontWeight: '700',
+  },
+  controlButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sortButton: {
+    minHeight: 38,
+    paddingHorizontal: 11,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  sortButtonText: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  iconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  sortMenu: {
+    position: 'absolute',
+    top: 52,
+    right: 62,
+    width: 115,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    zIndex: 50,
+    elevation: 8,
+  },
+  sortOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  sortOptionText: {
+    color: theme.colors.text,
+    fontSize: 13,
+  },
+  activeSortOptionText: {
+    color: theme.colors.green,
+    fontWeight: '800',
+  },
+  profileSearchBox: {
+    minHeight: 42,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  profileSearchInput: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 14,
   },
   emptyState: {
     minHeight: 180,

@@ -14,13 +14,13 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
-import { checkInPlace } from '@/features/profile/check-in-service';
 import {
   removeSavedPlace,
   savePlace,
 } from '@/features/profile/saved-service';
 import { getPlace, type PlaceDetails } from '@/services/api/place-service';
 import { useBookmarkStore } from '@/store/bookmarks';
+import { useExploredStore } from '@/store/explored';
 import { theme } from '@/theme';
 
 export default function PlaceDetailsScreen() {
@@ -38,6 +38,9 @@ export default function PlaceDetailsScreen() {
   const [savingBookmark, setSavingBookmark] = useState(false);
   const [markingExplored, setMarkingExplored] = useState(false);
   const bookmarks = useBookmarkStore((state) => state.bookmarks);
+  const explored = useExploredStore((state) => state.explored);
+  const setExplored = useExploredStore((state) => state.setExplored);
+  const markExplored = useExploredStore((state) => state.markExplored);
   const saveBookmark = useBookmarkStore((state) => state.saveBookmark);
   const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
   const isBookmarked = placeId
@@ -54,6 +57,10 @@ export default function PlaceDetailsScreen() {
         setLoading(true);
         const data = await getPlace(placeId);
         setPlace(data);
+
+        if (explored[placeId] === undefined) {
+          setExplored(placeId, data.explored);
+        }
       } catch (error) {
         console.log('Failed to load place:', error);
       } finally {
@@ -87,14 +94,18 @@ export default function PlaceDetailsScreen() {
   const images: string[] = place.images ?? [];
 
   const handleMarkExplored = async () => {
-    if (!placeId || place.explored || markingExplored) {
+    if (
+      !placeId ||
+      (explored[placeId] ?? place.explored) ||
+      markingExplored
+    ) {
       return;
     }
 
     try {
       setMarkingExplored(true);
 
-      await checkInPlace(placeId);
+      await markExplored(placeId);
 
       const refreshedPlace = await getPlace(placeId);
       setPlace(refreshedPlace);
@@ -354,18 +365,18 @@ const url =
                 style={styles.futureCard}
                 accessibilityRole="button"
                 accessibilityLabel={
-                  place.explored ? 'Place already explored' : 'Mark place as explored'
+                  (explored[placeId] ?? place.explored) ? 'Place already explored' : 'Mark place as explored'
                 }
-                disabled={place.explored || markingExplored}
+                disabled={(explored[placeId] ?? place.explored) || markingExplored}
                 onPress={handleMarkExplored}
               >
                 <Ionicons
-                  name={place.explored ? 'checkmark-circle' : 'footsteps-outline'}
+                  name={(explored[placeId] ?? place.explored) ? 'checkmark-circle' : 'footsteps-outline'}
                   size={21}
                   color={theme.colors.green}
                 />
                 <Text style={styles.futureTitle}>
-                  {place.explored ? 'Explored' : 'Explore'}
+                  {(explored[placeId] ?? place.explored) ? 'Explored' : 'Explore'}
                 </Text>
                 <Text style={styles.futureText}>
                   {markingExplored

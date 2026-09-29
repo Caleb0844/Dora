@@ -31,7 +31,7 @@ export function PostActions({
             size={25}
             color={visited ? theme.colors.accent : theme.colors.primary}
           />
-          <Text style={styles.label}>Visited</Text>
+          <Text style={styles.label}>Explored</Text>
         </Pressable>
 
         <Pressable style={styles.action}>

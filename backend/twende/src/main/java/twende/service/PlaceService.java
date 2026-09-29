@@ -137,15 +137,93 @@ public class PlaceService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<PlaceSummaryResponse> listPublicPlacesByUsername(String username, int page, int size) {
+    public PageResponse<PlaceSummaryResponse> listPublicPlacesByUsername(
+            String username,
+            String search,
+            String sort,
+            int page,
+            int size
+    ) {
         User creator = userRepository.findByUsernameIgnoreCase(username)
                 .filter(user -> user.getStatus() == twende.entity.UserStatus.ACTIVE)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found."));
-        Pageable pageable = pageable(page, size);
-        Page<Place> places = placeRepository.findAllByCreatedByIdAndStatus(
-                creator.getId(), PlaceStatus.PUBLISHED, pageable
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found.")
+                );
+
+        validatePage(page, size);
+
+        Sort.Direction direction;
+
+        if ("newest".equalsIgnoreCase(sort)) {
+            direction = Sort.Direction.DESC;
+        } else if ("oldest".equalsIgnoreCase(sort)) {
+            direction = Sort.Direction.ASC;
+        } else {
+            throw new BadRequestException(
+                    "Sort must be either newest or oldest."
+            );
+        }
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(direction, "createdAt")
         );
-        return PageResponse.from(places.map(this::toSummary));
+
+        Specification<Place> specification =
+                (root, query, criteria) -> {
+                    List<Predicate> predicates = new ArrayList<>();
+
+                    predicates.add(
+                            criteria.equal(
+                                    root.get("createdBy").get("id"),
+                                    creator.getId()
+                            )
+                    );
+
+                    predicates.add(
+                            criteria.equal(
+                                    root.get("status"),
+                                    PlaceStatus.PUBLISHED
+                            )
+                    );
+
+                    if (search != null && !search.isBlank()) {
+                        String pattern =
+                                "%"
+                                        + search.trim()
+                                                .toLowerCase(Locale.ROOT)
+                                        + "%";
+
+                        predicates.add(
+                                criteria.or(
+                                        criteria.like(
+                                                criteria.lower(
+                                                        root.get("name")
+                                                ),
+                                                pattern
+                                        ),
+                                        criteria.like(
+                                                criteria.lower(
+                                                        root.get("description")
+                                                ),
+                                                pattern
+                                        )
+                                )
+                        );
+                    }
+
+                    return criteria.and(
+                            predicates.toArray(Predicate[]::new)
+                    );
+                };
+
+        Page<Place> places =
+                placeRepository.findAll(specification, pageable);
+
+        return PageResponse.from(
+                places.map(this::toSummary)
+        );
     }
 
     @Transactional(readOnly = true)

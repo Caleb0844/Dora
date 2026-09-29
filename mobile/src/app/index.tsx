@@ -13,13 +13,13 @@ import {
 
 import { BottomNav } from '@/components/bottom-nav';
 import { PostActions } from '@/components/post-actions';
-import { checkInPlace } from '@/features/profile/check-in-service';
 import {
   removeSavedPlace,
   savePlace,
 } from '@/features/profile/saved-service';
 import { FeedPost, getFeed } from '@/services/api/feed-service';
 import { useBookmarkStore } from '@/store/bookmarks';
+import { useExploredStore } from '@/store/explored';
 import { theme } from '@/theme';
 
 export default function HomeScreen() {
@@ -28,6 +28,9 @@ export default function HomeScreen() {
   const [visitingIds, setVisitingIds] = useState<string[]>([]);
   const [bookmarkingIds, setBookmarkingIds] = useState<string[]>([]);
   const bookmarks = useBookmarkStore((state) => state.bookmarks);
+  const explored = useExploredStore((state) => state.explored);
+  const setExplored = useExploredStore((state) => state.setExplored);
+  const markExplored = useExploredStore((state) => state.markExplored);
   const saveBookmark = useBookmarkStore((state) => state.saveBookmark);
   const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
 
@@ -35,6 +38,12 @@ export default function HomeScreen() {
     getFeed()
       .then((data) => {
         setPosts(data.content);
+
+        data.content.forEach((post: FeedPost) => {
+          if (explored[post.id] === undefined) {
+            setExplored(post.id, post.visited);
+          }
+        });
       })
       .catch((error) => {
         console.log('Failed to load feed:', error);
@@ -134,33 +143,24 @@ export default function HomeScreen() {
             </Pressable>
 
             <PostActions
-              visited={item.visited}
+              visited={explored[item.id] ?? item.visited}
               visiting={visitingIds.includes(item.id)}
               bookmarked={bookmarks[item.id] ?? item.bookmarked}
               onVisitedPress={async () => {
-                setPosts((current) =>
-                  current.map((post) =>
-                    post.id === item.id
-                      ? { ...post, visited: true }
-                      : post
-                  )
-                );
+                if (
+                  explored[item.id] ??
+                  item.visited
+                ) {
+                  return;
+                }
 
                 setVisitingIds((current) => [...current, item.id]);
 
                 try {
-                  await checkInPlace(item.id);
+                  await markExplored(item.id);
                 } catch (error: any) {
-                  setPosts((current) =>
-                    current.map((post) =>
-                      post.id === item.id
-                        ? { ...post, visited: false }
-                        : post
-                    )
-                  );
-
                   console.log(
-                    'Check-in failed:',
+                    'Explore failed:',
                     error?.response?.data ?? error?.message
                   );
                 } finally {
@@ -200,9 +200,29 @@ export default function HomeScreen() {
               </Text>
 
               {!!item.description && (
-                <Text style={styles.description}>
-                  {item.description}
-                </Text>
+                <View style={styles.descriptionWrapper}>
+                  <Text
+                    style={styles.description}
+                    numberOfLines={3}
+                    ellipsizeMode="tail"
+                  >
+                    {item.description}
+                  </Text>
+
+                  <Pressable
+                    style={styles.viewMoreButton}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/place/[id]',
+                        params: { id: item.id },
+                      })
+                    }
+                  >
+                    <Text style={styles.viewMoreText}>
+                      View more
+                    </Text>
+                  </Pressable>
+                </View>
               )}
             </View>
           </View>
@@ -318,10 +338,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.accent,
   },
-  description: {
+  descriptionWrapper: {
+    position: 'relative',
     marginTop: 8,
+  },
+  description: {
     fontSize: 14,
     lineHeight: 20,
     color: theme.colors.textSecondary,
+  },
+  viewMoreButton: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    paddingLeft: 6,
+    backgroundColor: theme.colors.surface,
+  },
+  viewMoreText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    color: theme.colors.green,
   },
 });
