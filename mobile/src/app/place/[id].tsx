@@ -155,9 +155,19 @@ const url =
                 />
               )}
             </View>
-            <Text style={styles.headerUsername}>
-              @{place.creator.username}
-            </Text>
+            <View style={styles.headerCreatorInfo}>
+              <Text style={styles.headerDisplayName}>
+                {place.creator.displayName ?? place.creator.username}
+              </Text>
+
+              <Text style={styles.headerUsername}>
+                @{place.creator.username}
+              </Text>
+
+              <Text style={styles.headerCounty}>
+                {place.county}
+              </Text>
+            </View>
           </Pressable>
         )}
 
@@ -227,12 +237,6 @@ const url =
           </View>
 
           <View style={styles.locationRow}>
-            <Ionicons
-              name="location-outline"
-              size={23}
-              color={theme.colors.green}
-            />
-            <Text style={styles.locationText}>{place.county}</Text>
             <Pressable
               style={styles.locationMapButton}
               accessibilityRole="button"
@@ -427,10 +431,25 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  headerUsername: {
+  headerCreatorInfo: {
+    flex: 1,
+  },
+  headerDisplayName: {
     color: theme.colors.text,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
+  },
+  headerUsername: {
+    marginTop: 2,
+    color: theme.colors.green,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  headerCounty: {
+    marginTop: 2,
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
   },
   hero: {
     position: 'relative',
