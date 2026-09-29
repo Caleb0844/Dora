@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { theme } from '@/theme';
 
@@ -45,14 +45,6 @@ export function BottomNav() {
               />
             )}
 
-            <Text
-              style={[
-                styles.label,
-                active && styles.activeLabel,
-              ]}
-            >
-              {item.label}
-            </Text>
           </Pressable>
         );
       })}
@@ -85,13 +77,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: theme.colors.accent,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: theme.colors.muted,
-  },
-  activeLabel: {
-    color: theme.colors.green,
   },
 });

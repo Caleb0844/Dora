@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -13,6 +13,11 @@ import {
 } from 'react-native';
 
 import { BottomNav } from '@/components/bottom-nav';
+import {
+  addRecentPlace,
+  getRecentPlaces,
+  type RecentPlace,
+} from '@/features/places/recent-search-service';
 import {
   searchPlaces,
   type PlaceSummary,
@@ -29,13 +34,49 @@ export default function ExploreScreen() {
   const [searching, setSearching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [recents, setRecents] = useState<RecentPlace[]>([]);
+  const searchRequestId = useRef(0);
 
-  async function handleSearch() {
-    const value = query.trim();
+  useEffect(() => {
+    getRecentPlaces()
+      .then(setRecents)
+      .catch((error) => {
+        console.log('Failed to load recent places:', error);
+      });
+  }, []);
 
-    if (!value) {
+  async function openPlace(
+    place: PlaceSummary | RecentPlace
+  ) {
+    try {
+      const updated = await addRecentPlace({
+        id: place.id,
+        name: place.name,
+        category: place.category,
+        county: place.county,
+        thumbnailUrl: place.thumbnailUrl,
+      });
+
+      setRecents(updated);
+    } catch (error) {
+      console.log('Failed to save recent place:', error);
+    }
+
+    router.push({
+      pathname: '/place/[id]',
+      params: { id: place.id },
+    });
+  }
+
+  async function runSearch(value: string) {
+    const normalized = value.trim();
+    const requestId = ++searchRequestId.current;
+
+    if (!normalized) {
       setResults([]);
       setSearched(false);
+      setPage(0);
+      setLastPage(true);
       return;
     }
 
@@ -43,23 +84,57 @@ export default function ExploreScreen() {
       setSearching(true);
 
       const data = await searchPlaces(
-        value,
+        normalized,
         0,
         PAGE_SIZE
       );
+
+      if (requestId !== searchRequestId.current) {
+        return;
+      }
 
       setResults(data.content);
       setPage(data.page);
       setLastPage(data.last);
       setSearched(true);
     } catch (error) {
+      if (requestId !== searchRequestId.current) {
+        return;
+      }
+
       console.log('Search failed:', error);
       setResults([]);
       setSearched(true);
     } finally {
-      setSearching(false);
+      if (requestId === searchRequestId.current) {
+        setSearching(false);
+      }
     }
   }
+
+  async function handleSearch() {
+    await runSearch(query);
+  }
+
+  useEffect(() => {
+    const value = query.trim();
+
+    if (!value) {
+      setResults([]);
+      setSearched(false);
+      setPage(0);
+      setLastPage(true);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      runSearch(value);
+    }, 300);
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [query]);
 
   async function loadMore() {
     if (
@@ -94,46 +169,56 @@ export default function ExploreScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>
-          Search places
-        </Text>
-
-        <View style={styles.searchRow}>
-          <View style={styles.searchBox}>
-            <Ionicons
-              name="search-outline"
-              size={20}
-              color={theme.colors.textSecondary}
-            />
-
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              onSubmitEditing={handleSearch}
-              placeholder="Search by keyword"
-              placeholderTextColor={
-                theme.colors.textSecondary
-              }
-              returnKeyType="search"
-              style={styles.input}
-            />
-          </View>
-
+        <View style={styles.titleRow}>
           <Pressable
-            style={styles.searchButton}
-            onPress={handleSearch}
-            disabled={searching}
+            style={styles.backButton}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
-            {searching ? (
-              <ActivityIndicator />
-            ) : (
-              <Ionicons
-                name="arrow-forward"
-                size={20}
-                color={theme.colors.white}
-              />
-            )}
+            <Ionicons
+              name="arrow-back"
+              size={24}
+              color={theme.colors.text}
+            />
           </Pressable>
+
+          <Text style={styles.title}>
+            Search
+          </Text>
+        </View>
+
+        <View style={styles.searchBox}>
+          <Ionicons
+            name="search-outline"
+            size={20}
+            color={theme.colors.textSecondary}
+          />
+
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={handleSearch}
+            placeholder="Search by keyword"
+            placeholderTextColor={
+              theme.colors.textSecondary
+            }
+            returnKeyType="search"
+            style={styles.input}
+          />
+
+          {query.length > 0 && (
+            <Pressable
+              onPress={() => setQuery('')}
+              hitSlop={8}
+            >
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
+            </Pressable>
+          )}
         </View>
       </View>
 
@@ -148,20 +233,68 @@ export default function ExploreScreen() {
           data={results}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.results}
+          ListHeaderComponent={
+            !query.trim() && recents.length > 0 ? (
+              <View style={styles.recentsSection}>
+                <Text style={styles.recentsTitle}>
+                  Recents
+                </Text>
+
+                {recents.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    style={styles.resultCard}
+                    onPress={() => {
+                      void openPlace(item);
+                    }}
+                  >
+                    {item.thumbnailUrl ? (
+                      <Image
+                        source={{ uri: item.thumbnailUrl }}
+                        style={styles.thumbnail}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.thumbnail,
+                          styles.thumbnailFallback,
+                        ]}
+                      >
+                        <Ionicons
+                          name="time-outline"
+                          size={26}
+                          color={theme.colors.textSecondary}
+                        />
+                      </View>
+                    )}
+
+                    <View style={styles.resultInfo}>
+                      <Text style={styles.placeName}>
+                        {item.name}
+                      </Text>
+
+                      <Text style={styles.meta}>
+                        {item.category} · {item.county}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => (
             <Pressable
               style={styles.resultCard}
-              onPress={() =>
-                router.push({
-                  pathname: '/place/[id]',
-                  params: { id: item.id },
-                })
-              }
+              onPress={() => {
+                void openPlace(item);
+              }}
             >
               {item.thumbnailUrl ? (
                 <Image
                   source={{ uri: item.thumbnailUrl }}
                   style={styles.thumbnail}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
                 />
               ) : (
                 <View
@@ -180,7 +313,31 @@ export default function ExploreScreen() {
 
               <View style={styles.resultInfo}>
                 <Text style={styles.placeName}>
-                  {item.name}
+                  {(() => {
+                    const search = query.trim();
+                    const lowerName = item.name.toLowerCase();
+                    const lowerSearch = search.toLowerCase();
+                    const index = lowerName.indexOf(lowerSearch);
+
+                    if (!search || index === -1) {
+                      return item.name;
+                    }
+
+                    return (
+                      <>
+                        {item.name.slice(0, index)}
+                        <Text style={styles.highlightedText}>
+                          {item.name.slice(
+                            index,
+                            index + search.length
+                          )}
+                        </Text>
+                        {item.name.slice(
+                          index + search.length
+                        )}
+                      </>
+                    );
+                  })()}
                 </Text>
 
                 <Text style={styles.meta}>
@@ -227,26 +384,35 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: {
     fontSize: 24,
     fontWeight: '800',
     color: theme.colors.text,
-    marginBottom: 12,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    gap: 10,
   },
   searchBox: {
-    flex: 1,
+    width: '100%',
+    minHeight: 50,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: theme.colors.surfaceSoft,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.textSecondary,
   },
   input: {
     flex: 1,
@@ -254,17 +420,18 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 15,
   },
-  searchButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.green,
-  },
   results: {
     padding: 16,
     paddingBottom: 90,
+  },
+  recentsSection: {
+    marginBottom: 8,
+  },
+  recentsTitle: {
+    marginBottom: 12,
+    fontSize: 18,
+    fontWeight: '800',
+    color: theme.colors.text,
   },
   resultCard: {
     flexDirection: 'row',
@@ -294,6 +461,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: theme.colors.text,
+  },
+  highlightedText: {
+    color: theme.colors.green,
+    fontWeight: '900',
   },
   meta: {
     marginTop: 5,

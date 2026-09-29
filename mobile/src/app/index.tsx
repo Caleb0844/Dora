@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -90,6 +90,8 @@ export default function HomeScreen() {
                 <Image
                   source={{ uri: item.creator.profileImage }}
                   style={styles.avatarImage}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
                 />
               ) : (
                 <View style={styles.avatarFallback}>
@@ -121,7 +123,8 @@ export default function HomeScreen() {
                 <Image
                   source={{ uri: item.images[0] }}
                   style={styles.image}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
                 />
               ) : (
                 <View style={[styles.image, styles.noImage]}>
