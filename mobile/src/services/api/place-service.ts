@@ -55,3 +55,41 @@ export async function updatePlace(
   const response = await api.put(`/api/places/${placeId}`, data);
   return response.data.data;
 }
+
+export type PlaceSummary = {
+  id: string;
+  name: string;
+  category: string;
+  county: string;
+  latitude: number;
+  longitude: number;
+  distanceKm: number | null;
+  thumbnailUrl: string | null;
+  createdAt: string;
+};
+
+export type PlacesPage = {
+  content: PlaceSummary[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+};
+
+export async function searchPlaces(
+  search: string,
+  page = 0,
+  size = 20
+): Promise<PlacesPage> {
+  const response = await api.get('/api/places', {
+    params: {
+      search: search.trim(),
+      page,
+      size,
+    },
+  });
+
+  return response.data.data;
+}

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -55,6 +56,19 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.logo}>Twende</Text>
+
+        <Pressable
+          style={styles.searchHeaderButton}
+          onPress={() => router.push('/explore')}
+          accessibilityRole="button"
+          accessibilityLabel="Search places"
+        >
+          <Ionicons
+            name="search-outline"
+            size={24}
+            color={theme.colors.text}
+          />
+        </Pressable>
       </View>
 
       <FlatList
@@ -215,11 +229,24 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   logo: {
     fontSize: 28,
     fontWeight: '800',
     color: theme.colors.text,
+  },
+  searchHeaderButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   feed: {
     paddingBottom: 8,
