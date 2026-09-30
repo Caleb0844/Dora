@@ -54,7 +54,6 @@ export default function HomeScreen() {
     hasNextPage,
     isFetchingNextPage,
     isRefetching,
-    refetch: refetchFeed,
   } = useInfiniteQuery({
     queryKey: ['feed', 'home', 'infinite'],
     queryFn: ({ pageParam }) => getFeed(pageParam.page, 10),
@@ -103,7 +102,12 @@ export default function HomeScreen() {
   }, [feedData, shuffleVersion]);
 
   useEffect(() => {
-    const unsubscribe = navigation.addListener('tabPress', () => {
+    const addTabPressListener = navigation.addListener as unknown as (
+      event: 'tabPress',
+      listener: () => void
+    ) => () => void;
+
+    const unsubscribe = addTabPressListener('tabPress', () => {
       if (!navigation.isFocused()) {
         return;
       }

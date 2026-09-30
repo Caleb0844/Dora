@@ -7,7 +7,7 @@ import { theme } from '@/theme';
 export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
-      
+
         <Stack
           screenOptions={{
             headerShown: false,
@@ -17,7 +17,7 @@ export default function RootLayout() {
             },
           }}
         />
-      
+
     </QueryClientProvider>
   );
 }
