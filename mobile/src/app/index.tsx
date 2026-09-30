@@ -18,6 +18,7 @@ import {
   savePlace,
 } from '@/features/profile/saved-service';
 import { FeedPost, getFeed } from '@/services/api/feed-service';
+import { getMyProfile } from '@/features/profile/profile-service';
 import { useBookmarkStore } from '@/store/bookmarks';
 import { useExploredStore } from '@/store/explored';
 import { theme } from '@/theme';
@@ -35,8 +36,12 @@ export default function HomeScreen() {
   const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
 
   useEffect(() => {
-    getFeed()
-      .then((data) => {
+    async function loadHome() {
+      try {
+        await getMyProfile();
+
+        const data = await getFeed();
+
         setPosts(data.content);
 
         data.content.forEach((post: FeedPost) => {
@@ -44,13 +49,22 @@ export default function HomeScreen() {
             setExplored(post.id, post.visited);
           }
         });
-      })
-      .catch((error) => {
-        console.log('Failed to load feed:', error);
-      })
-      .finally(() => {
+      } catch (error: any) {
+        if (error?.response?.status === 401) {
+          router.replace('/login');
+          return;
+        }
+
+        console.log(
+          'Failed to load home:',
+          error?.response?.data ?? error?.message
+        );
+      } finally {
         setLoading(false);
-      });
+      }
+    }
+
+    void loadHome();
   }, []);
 
   if (loading) {

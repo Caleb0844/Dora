@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Alert,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -10,39 +11,59 @@ import {
 import { router } from 'expo-router';
 
 import {
-  login,
+  register,
   startGoogleLogin,
 } from '@/features/auth/auth-service';
 import { theme } from '@/theme';
 
-export default function LoginScreen() {
-  const [identifier, setIdentifier] = useState('');
+export default function SignupScreen() {
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  async function handleLogin() {
+  async function handleSignup() {
     try {
       setLoading(true);
 
-      await login({
-        identifier,
+      await register({
+        email,
+        username,
+        displayName,
         password,
+        confirmPassword,
+        profileImageUrl: null,
       });
 
       router.replace('/');
     } catch (error: any) {
       const message =
         error?.response?.data?.message ??
-        'Could not sign in.';
+        'Could not create your account.';
 
-      Alert.alert('Login failed', message);
+      const errors = error?.response?.data?.errors;
+
+      if (errors && Object.keys(errors).length > 0) {
+        const firstError = Object.values(errors)[0];
+
+        Alert.alert(
+          'Sign up failed',
+          String(firstError ?? message)
+        );
+
+        return;
+      }
+
+      Alert.alert('Sign up failed', message);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleGoogleLogin() {
+  async function handleGoogleSignup() {
     try {
       setGoogleLoading(true);
 
@@ -54,14 +75,14 @@ export default function LoginScreen() {
 
       if (result.type !== 'success') {
         Alert.alert(
-          'Google sign-in failed',
-          'Google sign-in could not be completed.'
+          'Google sign-up failed',
+          'Google sign-up could not be completed.'
         );
       }
     } catch (error: any) {
       Alert.alert(
-        'Google sign-in failed',
-        error?.message ?? 'Could not start Google sign-in.'
+        'Google sign-up failed',
+        error?.message ?? 'Could not start Google sign-up.'
       );
     } finally {
       setGoogleLoading(false);
@@ -69,15 +90,37 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sign in</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={styles.title}>Create account</Text>
 
       <TextInput
-        value={identifier}
-        onChangeText={setIdentifier}
-        placeholder="Email or username"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="Email"
         placeholderTextColor={theme.colors.textSecondary}
         autoCapitalize="none"
+        keyboardType="email-address"
+        style={styles.input}
+      />
+
+      <TextInput
+        value={username}
+        onChangeText={setUsername}
+        placeholder="Username"
+        placeholderTextColor={theme.colors.textSecondary}
+        autoCapitalize="none"
+        style={styles.input}
+      />
+
+      <TextInput
+        value={displayName}
+        onChangeText={setDisplayName}
+        placeholder="Display name"
+        placeholderTextColor={theme.colors.textSecondary}
         style={styles.input}
       />
 
@@ -90,13 +133,22 @@ export default function LoginScreen() {
         style={styles.input}
       />
 
+      <TextInput
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
+        placeholder="Confirm password"
+        placeholderTextColor={theme.colors.textSecondary}
+        secureTextEntry
+        style={styles.input}
+      />
+
       <Pressable
         style={styles.button}
-        onPress={handleLogin}
+        onPress={handleSignup}
         disabled={loading || googleLoading}
       >
         <Text style={styles.buttonText}>
-          {loading ? 'Signing in...' : 'Sign in'}
+          {loading ? 'Creating account...' : 'Create account'}
         </Text>
       </Pressable>
 
@@ -104,7 +156,7 @@ export default function LoginScreen() {
 
       <Pressable
         style={styles.googleButton}
-        onPress={handleGoogleLogin}
+        onPress={handleGoogleSignup}
         disabled={loading || googleLoading}
       >
         <Text style={styles.googleButtonText}>
@@ -114,23 +166,26 @@ export default function LoginScreen() {
         </Text>
       </Pressable>
 
-      <View style={styles.signupRow}>
-        <Text style={styles.signupText}>
-          Don't have an account?
+      <View style={styles.loginRow}>
+        <Text style={styles.loginText}>
+          Already have an account?
         </Text>
 
-        <Pressable onPress={() => router.replace('/signup')}>
-          <Text style={styles.signupLink}>Create account</Text>
+        <Pressable onPress={() => router.replace('/login')}>
+          <Text style={styles.loginLink}>Sign in</Text>
         </Pressable>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  container: {
+    flexGrow: 1,
     padding: 24,
     justifyContent: 'center',
   },
@@ -180,16 +235,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
   },
-  signupRow: {
+  loginRow: {
     marginTop: 20,
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 6,
   },
-  signupText: {
+  loginText: {
     color: theme.colors.textSecondary,
   },
-  signupLink: {
+  loginLink: {
     color: theme.colors.accent,
     fontWeight: '700',
   },

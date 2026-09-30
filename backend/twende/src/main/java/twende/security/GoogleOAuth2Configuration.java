@@ -27,7 +27,8 @@ public class GoogleOAuth2Configuration {
     @Bean
     public ClientRegistrationRepository googleClientRegistrationRepository(
             @Value("${app.oauth2.google.client-id}") String clientId,
-            @Value("${app.oauth2.google.client-secret}") String clientSecret
+            @Value("${app.oauth2.google.client-secret}") String clientSecret,
+            @Value("${app.oauth2.google.backend-redirect-uri}") String backendRedirectUri
     ) {
         if (clientId.isBlank() || clientSecret.isBlank()) {
             throw new IllegalStateException("Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable Google login.");
@@ -37,7 +38,7 @@ public class GoogleOAuth2Configuration {
                 .clientSecret(clientSecret)
                 .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-                .redirectUri("{baseUrl}/login/oauth2/code/{registrationId}")
+                .redirectUri(backendRedirectUri)
                 .scope("openid", "profile", "email")
                 .authorizationUri("https://accounts.google.com/o/oauth2/v2/auth")
                 .tokenUri("https://oauth2.googleapis.com/token")
@@ -80,18 +81,18 @@ public class GoogleOAuth2Configuration {
             return;
         }
         var existingIdentity = identityRepository.findByProviderAndProviderSubject("GOOGLE", oidcUser.getSubject());
-        String fragmentSeparator = redirectUri.contains("#") ? "&" : "#";
+        String querySeparator = redirectUri.contains("?") ? "&" : "?";
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Referrer-Policy", "no-referrer");
         if (existingIdentity.isPresent()) {
             String code = loginCodeService.createCode(existingIdentity.get().getUser());
-            response.sendRedirect(redirectUri + fragmentSeparator + "code=" + code);
+            response.sendRedirect(redirectUri + querySeparator + "code=" + code);
             return;
         }
 
         String setupToken = profileSetupService.createSetupToken(oidcUser);
         String email = URLEncoder.encode(oidcUser.getEmail(), StandardCharsets.UTF_8);
-        response.sendRedirect(redirectUri + fragmentSeparator
+        response.sendRedirect(redirectUri + querySeparator
             + "profile_setup_required=true&setup_token=" + setupToken + "&email=" + email);
     }
 }

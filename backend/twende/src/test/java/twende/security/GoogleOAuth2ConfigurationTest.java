@@ -28,7 +28,11 @@ class GoogleOAuth2ConfigurationTest {
     @Test
     void googleClientRegistrationConfiguresIssuerAndSigningKeys() {
         ClientRegistrationRepository registrations =
-                configuration.googleClientRegistrationRepository("client-id", "client-secret");
+                configuration.googleClientRegistrationRepository(
+                        "client-id",
+                        "client-secret",
+                        "http://localhost:8080/login/oauth2/code/google"
+                );
         ClientRegistration registration = registrations.findByRegistrationId("google");
 
         assertEquals("https://accounts.google.com", registration.getProviderDetails().getIssuerUri());
@@ -52,7 +56,7 @@ class GoogleOAuth2ConfigurationTest {
                         identityRepository, loginCodeService, setupService, "twende://auth/callback")
                 .onAuthenticationSuccess(new MockHttpServletRequest(), response, authentication);
 
-        assertEquals("twende://auth/callback#code=login-code", response.getRedirectedUrl());
+        assertEquals("twende://auth/callback?code=login-code", response.getRedirectedUrl());
         verify(setupService, never()).createSetupToken(oidcUser);
     }
 
@@ -72,7 +76,7 @@ class GoogleOAuth2ConfigurationTest {
                 .onAuthenticationSuccess(new MockHttpServletRequest(), response, authentication(oidcUser));
 
         assertEquals(
-                "twende://auth/callback#profile_setup_required=true&setup_token=setup-token&email=person%40example.com",
+                "twende://auth/callback?profile_setup_required=true&setup_token=setup-token&email=person%40example.com",
                 response.getRedirectedUrl()
         );
         verify(loginCodeService, never()).createCode(org.mockito.ArgumentMatchers.any(User.class));
