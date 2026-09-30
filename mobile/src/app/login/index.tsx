@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import {
   Alert,
@@ -9,6 +10,9 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 
+import { resumeAfterAuth } from '@/features/auth/resume-after-auth';
+import { useAuthIntentStore } from '@/store/auth-intent';
+
 import {
   login,
   startGoogleLogin,
@@ -16,6 +20,8 @@ import {
 import { theme } from '@/theme';
 
 export default function LoginScreen() {
+  const clearIntent = useAuthIntentStore((state) => state.clearIntent);
+
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,7 +36,7 @@ export default function LoginScreen() {
         password,
       });
 
-      router.replace('/');
+      resumeAfterAuth();
     } catch (error: any) {
       const message =
         error?.response?.data?.message ??
@@ -70,6 +76,22 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
+      <Pressable
+        style={styles.closeButton}
+        onPress={() => {
+          clearIntent();
+          router.replace('/');
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Close sign in"
+      >
+        <Ionicons
+          name="close"
+          size={30}
+          color={theme.colors.text}
+        />
+      </Pressable>
+
       <Text style={styles.title}>Sign in</Text>
 
       <TextInput
@@ -133,6 +155,13 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
     padding: 24,
     justifyContent: 'center',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 48,
+    left: 20,
+    zIndex: 10,
+    padding: 8,
   },
   title: {
     color: theme.colors.text,

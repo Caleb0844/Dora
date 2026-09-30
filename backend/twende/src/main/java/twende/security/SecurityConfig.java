@@ -54,7 +54,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/users/me", "/api/users/me/**")
                         .hasAuthority(JwtAccountStatusConverter.ACTIVE_ACCOUNT_AUTHORITY)
                         .requestMatchers(HttpMethod.GET, "/api/users/*", "/api/users/*/places").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/places", "/api/places/**", "/api/categories", "/api/counties").permitAll()
+                .requestMatchers(
+        HttpMethod.GET,
+        "/api/feed",
+        "/api/places",
+        "/api/places/**",
+        "/api/categories",
+        "/api/counties"
+).permitAll()
                         .anyRequest().hasAuthority(JwtAccountStatusConverter.ACTIVE_ACCOUNT_AUTHORITY))
             .exceptionHandling(exceptions -> exceptions
                 .authenticationEntryPoint((request, response, exception) ->

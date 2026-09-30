@@ -382,7 +382,16 @@ class TwendeApplicationTests {
         jdbcTemplate.update("UPDATE places SET created_at = CURRENT_TIMESTAMP(6) - INTERVAL 1 DAY WHERE id = ?", olderPlaceId);
         jdbcTemplate.update("UPDATE places SET created_at = CURRENT_TIMESTAMP(6) WHERE id = ?", newerPlaceId);
 
-        mockMvc.perform(get("/api/feed")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/feed")
+                .param("page", "0").param("size", "1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalElements").value(2))
+            .andExpect(jsonPath("$.data.content[0].id").value(newerPlaceId))
+            .andExpect(jsonPath("$.data.content[0].creator.username").value(contributor.username()))
+            .andExpect(jsonPath("$.data.content[0].creator.email").doesNotExist())
+            .andExpect(jsonPath("$.data.content[0].bookmarked").value(false))
+            .andExpect(jsonPath("$.data.content[0].visited").value(false));
+
         mockMvc.perform(post("/api/bookmarks/{placeId}", newerPlaceId)
                 .header("Authorization", "Bearer " + viewer.accessToken()))
             .andExpect(status().isCreated());

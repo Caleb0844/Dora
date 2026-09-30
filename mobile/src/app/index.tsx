@@ -18,7 +18,8 @@ import {
   savePlace,
 } from '@/features/profile/saved-service';
 import { FeedPost, getFeed } from '@/services/api/feed-service';
-import { getMyProfile } from '@/features/profile/profile-service';
+import { getAccessToken } from '@/services/storage/auth-storage';
+import { useAuthIntentStore } from '@/store/auth-intent';
 import { useBookmarkStore } from '@/store/bookmarks';
 import { useExploredStore } from '@/store/explored';
 import { theme } from '@/theme';
@@ -28,6 +29,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [visitingIds, setVisitingIds] = useState<string[]>([]);
   const [bookmarkingIds, setBookmarkingIds] = useState<string[]>([]);
+  const setAuthIntent = useAuthIntentStore((state) => state.setIntent);
   const bookmarks = useBookmarkStore((state) => state.bookmarks);
   const explored = useExploredStore((state) => state.explored);
   const setExplored = useExploredStore((state) => state.setExplored);
@@ -38,8 +40,6 @@ export default function HomeScreen() {
   useEffect(() => {
     async function loadHome() {
       try {
-        await getMyProfile();
-
         const data = await getFeed();
 
         setPosts(data.content);
@@ -50,11 +50,6 @@ export default function HomeScreen() {
           }
         });
       } catch (error: any) {
-        if (error?.response?.status === 401) {
-          router.replace('/login');
-          return;
-        }
-
         console.log(
           'Failed to load home:',
           error?.response?.data ?? error?.message
@@ -161,6 +156,18 @@ export default function HomeScreen() {
               visiting={visitingIds.includes(item.id)}
               bookmarked={bookmarks[item.id] ?? item.bookmarked}
               onVisitedPress={async () => {
+                const accessToken = await getAccessToken();
+
+                if (!accessToken) {
+                  setAuthIntent({
+                    type: 'explore',
+                    placeId: item.id,
+                  });
+
+                  router.push('/login');
+                  return;
+                }
+
                 if (
                   explored[item.id] ??
                   item.visited
@@ -184,6 +191,18 @@ export default function HomeScreen() {
                 }
               }}
               onBookmarkPress={async () => {
+                const accessToken = await getAccessToken();
+
+                if (!accessToken) {
+                  setAuthIntent({
+                    type: 'bookmark',
+                    placeId: item.id,
+                  });
+
+                  router.push('/login');
+                  return;
+                }
+
                 if (bookmarkingIds.includes(item.id)) {
                   return;
                 }

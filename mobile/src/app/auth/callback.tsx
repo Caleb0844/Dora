@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { exchangeGoogleCode } from '@/features/auth/auth-service';
+import { resumeAfterAuth } from '@/features/auth/resume-after-auth';
 import { theme } from '@/theme';
 
 export default function AuthCallbackScreen() {
@@ -26,7 +27,7 @@ export default function AuthCallbackScreen() {
       try {
         if (params.code) {
           await exchangeGoogleCode(params.code);
-          router.replace('/');
+          resumeAfterAuth();
           return;
         }
 

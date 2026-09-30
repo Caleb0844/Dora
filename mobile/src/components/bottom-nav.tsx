@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { getAccessToken } from '@/services/storage/auth-storage';
+import { useAuthIntentStore } from '@/store/auth-intent';
 import { theme } from '@/theme';
 
 const items = [
@@ -14,6 +16,7 @@ const items = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const setIntent = useAuthIntentStore((state) => state.setIntent);
 
   return (
     <View style={styles.container}>
@@ -27,7 +30,23 @@ export function BottomNav() {
           <Pressable
             key={item.label}
             style={styles.item}
-            onPress={() => router.replace(item.route)}
+            onPress={async () => {
+              if (item.route === '/add' || item.route === '/profile') {
+                const accessToken = await getAccessToken();
+
+                if (!accessToken) {
+                  setIntent({
+                    type: 'route',
+                    route: item.route,
+                  });
+
+                  router.push('/login');
+                  return;
+                }
+              }
+
+              router.replace(item.route);
+            }}
           >
             {item.label === 'Add' ? (
               <View style={styles.addButton}>

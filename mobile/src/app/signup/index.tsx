@@ -14,6 +14,7 @@ import {
   register,
   startGoogleLogin,
 } from '@/features/auth/auth-service';
+import { resumeAfterAuth } from '@/features/auth/resume-after-auth';
 import { theme } from '@/theme';
 
 export default function SignupScreen() {
@@ -38,7 +39,7 @@ export default function SignupScreen() {
         profileImageUrl: null,
       });
 
-      router.replace('/');
+      resumeAfterAuth();
     } catch (error: any) {
       const message =
         error?.response?.data?.message ??

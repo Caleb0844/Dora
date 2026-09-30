@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { completeGoogleProfile } from '@/features/auth/auth-service';
+import { resumeAfterAuth } from '@/features/auth/resume-after-auth';
 import { theme } from '@/theme';
 
 export default function GoogleProfileSetupScreen() {
@@ -41,7 +42,7 @@ export default function GoogleProfileSetupScreen() {
         profileImage: null,
       });
 
-      router.replace('/');
+      resumeAfterAuth();
     } catch (error: any) {
       const message =
         error?.response?.data?.message ??

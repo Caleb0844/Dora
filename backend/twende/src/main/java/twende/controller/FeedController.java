@@ -30,7 +30,9 @@ public class FeedController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
-        PageResponse<FeedPostResponse> feed = feedService.getFeed(jwt.getSubject(), page, size);
+        String userId = jwt == null ? null : jwt.getSubject();
+
+        PageResponse<FeedPostResponse> feed = feedService.getFeed(userId, page, size);
         return ResponseEntity.ok(new ApiResponse<>(true, "Feed retrieved successfully.", feed));
     }
 }
