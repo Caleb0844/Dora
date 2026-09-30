@@ -36,7 +36,7 @@ export default function LoginScreen() {
         password,
       });
 
-      resumeAfterAuth();
+      await resumeAfterAuth();
     } catch (error: any) {
       const message =
         error?.response?.data?.message ??
@@ -80,7 +80,12 @@ export default function LoginScreen() {
         style={styles.closeButton}
         onPress={() => {
           clearIntent();
-          router.replace('/');
+
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/');
+          }
         }}
         accessibilityRole="button"
         accessibilityLabel="Close sign in"
@@ -138,7 +143,7 @@ export default function LoginScreen() {
 
       <View style={styles.signupRow}>
         <Text style={styles.signupText}>
-          Don't have an account?
+          Don&apos;t have an account?
         </Text>
 
         <Pressable onPress={() => router.replace('/signup')}>

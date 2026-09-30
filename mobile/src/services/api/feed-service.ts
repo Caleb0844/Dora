@@ -22,7 +22,20 @@ export type FeedPost = {
   visited: boolean;
 };
 
-export async function getFeed(page = 0, size = 10) {
+export type FeedPage = {
+  content: FeedPost[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+};
+
+export async function getFeed(
+  page = 0,
+  size = 10
+): Promise<FeedPage> {
   const response = await api.get('/api/feed', {
     params: { page, size },
   });

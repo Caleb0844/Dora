@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
@@ -42,7 +42,7 @@ export default function GoogleProfileSetupScreen() {
         profileImage: null,
       });
 
-      resumeAfterAuth();
+      await resumeAfterAuth();
     } catch (error: any) {
       const message =
         error?.response?.data?.message ??

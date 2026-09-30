@@ -1,5 +1,7 @@
 import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
 
+import { resetAccountScopedState } from '@/features/auth/session-state';
 import { authApi } from '@/services/api/client';
 import {
   getRefreshToken,
@@ -38,6 +40,12 @@ async function saveAuthTokens(data: {
   refreshToken: string;
 }) {
   await saveTokens(data.accessToken, data.refreshToken);
+
+  // A new authenticated identity must never inherit guest/previous-user
+  // viewer state. Preserve auth intent so resumeAfterAuth() can finish it.
+  await resetAccountScopedState({
+    refreshFeed: true,
+  });
 }
 
 export async function login(data: LoginRequest) {
@@ -61,6 +69,14 @@ export async function startGoogleLogin() {
     throw new Error(
       'EXPO_PUBLIC_GOOGLE_AUTH_URL is not configured.'
     );
+  }
+
+  if (Platform.OS === 'android') {
+    try {
+      WebBrowser.dismissAuthSession();
+    } catch {
+      // No previous auth session is active.
+    }
   }
 
   return WebBrowser.openAuthSessionAsync(

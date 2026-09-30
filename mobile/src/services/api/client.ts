@@ -1,4 +1,7 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  AxiosError,
+  InternalAxiosRequestConfig,
+} from 'axios';
 
 import {
   getAccessToken,
@@ -21,20 +24,60 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
 };
 
-api.interceptors.request.use(async (config) => {
-  const token = await getAccessToken();
+type AuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+};
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+let refreshPromise: Promise<AuthTokens> | null = null;
+
+async function refreshAuthSession(): Promise<AuthTokens> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const refreshToken = await getRefreshToken();
+
+      if (!refreshToken) {
+        throw new Error('No refresh token available.');
+      }
+
+      const response = await authApi.post('/api/auth/refresh', {
+        refreshToken,
+      });
+
+      const tokens = response.data.data as AuthTokens;
+
+      await saveTokens(
+        tokens.accessToken,
+        tokens.refreshToken
+      );
+
+      return tokens;
+    })().finally(() => {
+      refreshPromise = null;
+    });
   }
 
-  return config;
-});
+  return refreshPromise;
+}
+
+api.interceptors.request.use(
+  async (config: RetryableRequestConfig) => {
+    const token = await getAccessToken();
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    return config;
+  }
+);
 
 api.interceptors.response.use(
   (response) => response,
+
   async (error: AxiosError) => {
-    const originalRequest = error.config as RetryableRequestConfig | undefined;
+    const originalRequest =
+      error.config as RetryableRequestConfig | undefined;
 
     if (
       error.response?.status !== 401 ||
@@ -46,26 +89,36 @@ api.interceptors.response.use(
 
     originalRequest._retry = true;
 
-    const refreshToken = await getRefreshToken();
-
-    if (!refreshToken) {
-      await removeTokens();
-      return Promise.reject(error);
-    }
-
     try {
-      const response = await authApi.post('/api/auth/refresh', {
-        refreshToken,
-      });
+      /*
+       * The request may have been sent with an older access token while
+       * another login/refresh already installed a newer one.
+       *
+       * Retry using the newest token before starting another refresh.
+       */
+      const currentAccessToken = await getAccessToken();
+      const requestAuthorization =
+        originalRequest.headers?.Authorization;
 
-      const {
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
-      } = response.data.data;
+      if (
+        currentAccessToken &&
+        requestAuthorization !==
+          `Bearer ${currentAccessToken}`
+      ) {
+        originalRequest.headers.Authorization =
+          `Bearer ${currentAccessToken}`;
 
-      await saveTokens(newAccessToken, newRefreshToken);
+        return api(originalRequest);
+      }
 
-      originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+      /*
+       * All simultaneous 401 responses share this single refresh.
+       * This prevents refresh-token rotation races.
+       */
+      const tokens = await refreshAuthSession();
+
+      originalRequest.headers.Authorization =
+        `Bearer ${tokens.accessToken}`;
 
       return api(originalRequest);
     } catch (refreshError) {

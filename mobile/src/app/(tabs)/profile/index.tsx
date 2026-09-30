@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { getAddedPlaces } from '@/features/profile/added-service';
 import { router } from 'expo-router';
 import {
@@ -19,7 +20,6 @@ import {
 } from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
-import { BottomNav } from '@/components/bottom-nav';
 import {
   ProfilePlaceTab,
   ProfilePlaceTabs,
@@ -29,11 +29,11 @@ import { ProfilePlaceGrid } from '@/components/profile-place-grid';
 import {
   getMyProfile,
   updateMyProfile,
-  type MyProfile,
 } from '@/features/profile/profile-service';
 import { getVisitedPlaces } from '@/features/profile/visited-service';
 import { getSavedPlaces } from '@/features/profile/saved-service';
 import { logout } from '@/features/auth/auth-service';
+import { resetAccountScopedState } from '@/features/auth/session-state';
 import { useBookmarkStore } from '@/store/bookmarks';
 import { deletePlace } from '@/services/api/place-service';
 import {
@@ -43,8 +43,6 @@ import {
 import { theme } from '@/theme';
 
 export default function ProfileScreen() {
-  const [profile, setProfile] = useState<MyProfile | null>(null);
-  const [loading, setLoading] = useState(true);
   const [editVisible, setEditVisible] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState('');
@@ -57,65 +55,73 @@ export default function ProfileScreen() {
   const [sortField, setSortField] = useState<'name' | 'date'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  const [savedPlaces, setSavedPlaces] = useState<
-    { id: string; name: string; image?: string }[]
-  >([]);
+  const queryClient = useQueryClient();
   const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
-  const [addedPlaces, setAddedPlaces] = useState<
-    { id: string; name: string; image?: string }[]
-  >([]);
-  const [visitedPlaces, setVisitedPlaces] = useState<
-    { id: string; name: string; image?: string }[]
-  >([]);
 
-  useEffect(() => {
-    async function loadProfile() {
-      try {
-        const [profileData, savedData, addedData, visitedData] = await Promise.all([
-          getMyProfile(),
-          getSavedPlaces(0, 8),
-          getAddedPlaces(0, 8),
-          getVisitedPlaces(0, 8),
-        ]);
+  const profileQuery = useQuery({
+    queryKey: ['profile', 'me'],
+    queryFn: getMyProfile,
+    staleTime: 5 * 60_000,
+  });
 
-        setProfile(profileData);
-        setSavedPlaces(
-            savedData.content.map((bookmark) => ({
-              id: bookmark.place.id,
-              name: bookmark.place.name,
-              image: bookmark.place.thumbnailUrl ?? undefined,
-            }))
-          );
-        setAddedPlaces(
-          addedData.content.map((place) => ({
-            id: place.id,
-            name: place.name,
-            image: place.thumbnailUrl ?? undefined,
-          }))
-        );
-        setVisitedPlaces(
-          visitedData.content.map((item) => ({
-            id: item.place.id,
-            name: item.place.name,
-            image: item.place.images[0] ?? undefined,
-          }))
-        );
-      } catch {
-        setProfile(null);
-        setSavedPlaces([]);
-        setAddedPlaces([]);
-        setVisitedPlaces([]);
-      } finally {
-        setLoading(false);
-      }
-    }
+  const savedQuery = useQuery({
+    queryKey: ['profile', 'me', 'saved', 0, 8],
+    queryFn: () => getSavedPlaces(0, 8),
+    staleTime: 2 * 60_000,
+    enabled: activeTab === 'saved',
+  });
 
-    loadProfile();
-  }, []);
+  const addedQuery = useQuery({
+    queryKey: ['profile', 'me', 'added', 0, 8],
+    queryFn: () => getAddedPlaces(0, 8),
+    staleTime: 2 * 60_000,
+    enabled: activeTab === 'added',
+  });
+
+  const visitedQuery = useQuery({
+    queryKey: ['profile', 'me', 'visited', 0, 8],
+    queryFn: () => getVisitedPlaces(0, 8),
+    staleTime: 2 * 60_000,
+    enabled: activeTab === 'visited',
+  });
+
+  const profile = profileQuery.data ?? null;
+
+  const savedPlaces =
+    savedQuery.data?.content.map((bookmark) => ({
+      id: bookmark.place.id,
+      name: bookmark.place.name,
+      image: bookmark.place.thumbnailUrl ?? undefined,
+    })) ?? [];
+
+  const addedPlaces =
+    addedQuery.data?.content.map((place) => ({
+      id: place.id,
+      name: place.name,
+      image: place.thumbnailUrl ?? undefined,
+    })) ?? [];
+
+  const visitedPlaces =
+    visitedQuery.data?.content.map((item) => ({
+      id: item.place.id,
+      name: item.place.name,
+      image: item.place.images[0] ?? undefined,
+    })) ?? [];
+
+  const loading = profileQuery.isPending;
 
   async function handleLogout() {
     await logout();
+
     router.replace('/login');
+
+    // Leave the authenticated screen before clearing its active cache.
+    // Otherwise the mounted Profile tree performs unnecessary rerender work.
+    requestAnimationFrame(() => {
+      void resetAccountScopedState({
+        clearAuthIntent: true,
+      });
+    });
   }
 
   function openEditProfile() {
@@ -196,7 +202,11 @@ export default function ProfileScreen() {
         profileImageUrl,
       });
 
-      setProfile(updatedProfile);
+      queryClient.setQueryData(
+        ['profile', 'me'],
+        updatedProfile
+      );
+
       setSelectedProfileImageUri(null);
       setEditVisible(false);
     } catch (error: any) {
@@ -314,7 +324,11 @@ export default function ProfileScreen() {
                   }}
                 />
 
-                {savedPlaces.length === 0 ? (
+                {savedQuery.isPending ? (
+                  <View style={styles.emptyState}>
+                    <ActivityIndicator size="small" />
+                  </View>
+                ) : savedPlaces.length === 0 ? (
                   <View style={styles.emptyState}>
                     <Text style={styles.emptyTitle}>No saved places yet</Text>
                   </View>
@@ -331,8 +345,30 @@ export default function ProfileScreen() {
                       actionLabel="Remove"
                       onPrimaryAction={async (place) => {
                         await removeBookmark(place.id);
-                        setSavedPlaces((current) =>
-                          current.filter((savedPlace) => savedPlace.id !== place.id)
+
+                        queryClient.setQueryData(
+                          ['profile', 'me', 'saved', 0, 8],
+                          (
+                            current:
+                              | Awaited<ReturnType<typeof getSavedPlaces>>
+                              | undefined
+                          ) => {
+                            if (!current) {
+                              return current;
+                            }
+
+                            return {
+                              ...current,
+                              content: current.content.filter(
+                                (savedPlace) =>
+                                  savedPlace.place.id !== place.id
+                              ),
+                              totalElements: Math.max(
+                                0,
+                                current.totalElements - 1
+                              ),
+                            };
+                          }
                         );
                       }}
                     />
@@ -358,7 +394,11 @@ export default function ProfileScreen() {
                   }}
                 />
 
-                {addedPlaces.length === 0 ? (
+                {addedQuery.isPending ? (
+                  <View style={styles.emptyState}>
+                    <ActivityIndicator size="small" />
+                  </View>
+                ) : addedPlaces.length === 0 ? (
                   <View style={styles.emptyState}>
                     <Text style={styles.emptyTitle}>No places added</Text>
 
@@ -399,8 +439,29 @@ export default function ProfileScreen() {
                             onPress: async () => {
                               try {
                                 await deletePlace(place.id);
-                                setAddedPlaces((current) =>
-                                  current.filter((item) => item.id !== place.id)
+
+                                queryClient.setQueryData(
+                                  ['profile', 'me', 'added', 0, 8],
+                                  (
+                                    current:
+                                      | Awaited<ReturnType<typeof getAddedPlaces>>
+                                      | undefined
+                                  ) => {
+                                    if (!current) {
+                                      return current;
+                                    }
+
+                                    return {
+                                      ...current,
+                                      content: current.content.filter(
+                                        (item) => item.id !== place.id
+                                      ),
+                                      totalElements: Math.max(
+                                        0,
+                                        current.totalElements - 1
+                                      ),
+                                    };
+                                  }
                                 );
                               } catch (error: any) {
                                 Alert.alert(
@@ -433,7 +494,11 @@ export default function ProfileScreen() {
                   }}
                 />
 
-                {visitedPlaces.length === 0 ? (
+                {visitedQuery.isPending ? (
+                  <View style={styles.emptyState}>
+                    <ActivityIndicator size="small" />
+                  </View>
+                ) : visitedPlaces.length === 0 ? (
                   <View style={styles.emptyState}>
                     <Text style={styles.emptyTitle}>No places explored yet</Text>
 
@@ -450,7 +515,6 @@ export default function ProfileScreen() {
         </ScrollView>
       )}
 
-      <BottomNav />
 
       <Modal
         visible={editVisible}

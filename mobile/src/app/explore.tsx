@@ -12,7 +12,6 @@ import {
   View,
 } from 'react-native';
 
-import { BottomNav } from '@/components/bottom-nav';
 import {
   addRecentPlace,
   getRecentPlaces,
@@ -31,7 +30,6 @@ export default function ExploreScreen() {
   const [results, setResults] = useState<PlaceSummary[]>([]);
   const [page, setPage] = useState(0);
   const [lastPage, setLastPage] = useState(true);
-  const [searching, setSearching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searched, setSearched] = useState(false);
   const [recents, setRecents] = useState<RecentPlace[]>([]);
@@ -81,8 +79,6 @@ export default function ExploreScreen() {
     }
 
     try {
-      setSearching(true);
-
       const data = await searchPlaces(
         normalized,
         0,
@@ -106,9 +102,8 @@ export default function ExploreScreen() {
       setResults([]);
       setSearched(true);
     } finally {
-      if (requestId === searchRequestId.current) {
-        setSearching(false);
-      }
+      // Request identity is still checked above so stale responses
+      // cannot overwrite newer search results.
     }
   }
 
@@ -120,21 +115,34 @@ export default function ExploreScreen() {
     const value = query.trim();
 
     if (!value) {
-      setResults([]);
-      setSearched(false);
-      setPage(0);
-      setLastPage(true);
       return;
     }
 
     const timeout = setTimeout(() => {
-      runSearch(value);
+      void runSearch(value);
     }, 300);
 
     return () => {
       clearTimeout(timeout);
     };
   }, [query]);
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+
+    if (value.trim()) {
+      return;
+    }
+
+    // Invalidate any in-flight search so its response cannot repopulate
+    // results after the user has cleared the field.
+    searchRequestId.current += 1;
+
+    setResults([]);
+    setSearched(false);
+    setPage(0);
+    setLastPage(true);
+  }
 
   async function loadMore() {
     if (
@@ -197,7 +205,7 @@ export default function ExploreScreen() {
 
           <TextInput
             value={query}
-            onChangeText={setQuery}
+            onChangeText={handleQueryChange}
             onSubmitEditing={handleSearch}
             placeholder="Search by keyword"
             placeholderTextColor={
@@ -366,7 +374,6 @@ export default function ExploreScreen() {
         />
       )}
 
-      <BottomNav />
     </View>
   );
 }

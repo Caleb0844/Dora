@@ -4,6 +4,7 @@ import {
   removeSavedPlace,
   savePlace,
 } from '@/features/profile/saved-service';
+import { queryClient } from '@/services/query/query-client';
 
 type BookmarkMap = Record<string, boolean>;
 
@@ -31,6 +32,10 @@ export const useBookmarkStore = create<BookmarkStore>((set, get) => ({
 
     try {
       await savePlace(placeId);
+
+      await queryClient.invalidateQueries({
+        queryKey: ['profile', 'me', 'saved'],
+      });
     } catch (error: any) {
       if (previousValue === undefined) {
         set((state) => {
@@ -57,6 +62,10 @@ export const useBookmarkStore = create<BookmarkStore>((set, get) => ({
 
     try {
       await removeSavedPlace(placeId);
+
+      await queryClient.invalidateQueries({
+        queryKey: ['profile', 'me', 'saved'],
+      });
     } catch (error: any) {
       if (previousValue === undefined) {
         set((state) => {

@@ -14,10 +14,6 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
-import {
-  removeSavedPlace,
-  savePlace,
-} from '@/features/profile/saved-service';
 import { getPlace, type PlaceDetails } from '@/services/api/place-service';
 import { useBookmarkStore } from '@/store/bookmarks';
 import { useExploredStore } from '@/store/explored';
@@ -58,7 +54,10 @@ export default function PlaceDetailsScreen() {
         const data = await getPlace(placeId);
         setPlace(data);
 
-        if (explored[placeId] === undefined) {
+        const currentExplored =
+          useExploredStore.getState().explored;
+
+        if (currentExplored[placeId] === undefined) {
           setExplored(placeId, data.explored);
         }
       } catch (error) {
@@ -69,7 +68,7 @@ export default function PlaceDetailsScreen() {
     }
 
     loadPlace();
-  }, [placeId]);
+  }, [placeId, setExplored]);
 
   if (loading) {
     return (

@@ -27,7 +27,7 @@ export default function AuthCallbackScreen() {
       try {
         if (params.code) {
           await exchangeGoogleCode(params.code);
-          resumeAfterAuth();
+          await resumeAfterAuth();
           return;
         }
 

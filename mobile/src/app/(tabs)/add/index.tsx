@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
@@ -14,7 +15,6 @@ import {
   View,
 } from 'react-native';
 
-import { BottomNav } from '@/components/bottom-nav';
 import {
   Category,
   County,
@@ -31,6 +31,7 @@ import { theme } from '@/theme';
 
 export default function AddPlaceScreen() {
   const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const queryClient = useQueryClient();
   const isEditing = Boolean(edit);
   const [categories, setCategories] = useState<Category[]>([]);
   const [counties, setCounties] = useState<County[]>([]);
@@ -55,6 +56,11 @@ export default function AddPlaceScreen() {
   const clearSelectedLocation =
     useLocationSelectionStore((state) => state.clearSelectedLocation);
 
+  /* eslint-disable react-hooks/set-state-in-effect --
+   * selectedLocation is external Zustand state returned from the map screen.
+   * This effect intentionally synchronizes that external selection into the
+   * local form before clearing the handoff value.
+   */
   useEffect(() => {
     if (!selectedLocation) {
       return;
@@ -64,6 +70,7 @@ export default function AddPlaceScreen() {
     setLongitude(selectedLocation.longitude);
     clearSelectedLocation();
   }, [selectedLocation, clearSelectedLocation]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     getCategories()
@@ -247,12 +254,42 @@ export default function AddPlaceScreen() {
       if (isEditing && edit) {
         await updatePlace(edit, payload);
 
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ['feed'],
+            refetchType: 'all',
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ['profile', 'me', 'added'],
+            refetchType: 'all',
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ['nearby'],
+            refetchType: 'all',
+          }),
+        ]);
+
         Alert.alert(
           'Place updated',
           'Your changes were saved successfully.'
         );
       } else {
         await createPlace(payload);
+
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: ['feed'],
+            refetchType: 'all',
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ['profile', 'me', 'added'],
+            refetchType: 'all',
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ['nearby'],
+            refetchType: 'all',
+          }),
+        ]);
 
         Alert.alert(
           'Place added',
@@ -577,7 +614,6 @@ export default function AddPlaceScreen() {
         </Pressable>
       </ScrollView>
 
-      <BottomNav />
     </View>
   );
 }

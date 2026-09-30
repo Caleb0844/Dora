@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { router, useNavigation } from 'expo-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,12 +12,7 @@ import {
   View,
 } from 'react-native';
 
-import { BottomNav } from '@/components/bottom-nav';
 import { PostActions } from '@/components/post-actions';
-import {
-  removeSavedPlace,
-  savePlace,
-} from '@/features/profile/saved-service';
 import { FeedPost, getFeed } from '@/services/api/feed-service';
 import { getAccessToken } from '@/services/storage/auth-storage';
 import { useAuthIntentStore } from '@/store/auth-intent';
@@ -24,9 +20,22 @@ import { useBookmarkStore } from '@/store/bookmarks';
 import { useExploredStore } from '@/store/explored';
 import { theme } from '@/theme';
 
+function feedShuffleScore(id: string, version: number) {
+  let hash = 2166136261 ^ version;
+
+  for (let index = 0; index < id.length; index += 1) {
+    hash ^= id.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
 export default function HomeScreen() {
-  const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [loading, setLoading] = useState(true);
+  const navigation = useNavigation();
+  const queryClient = useQueryClient();
+  const listRef = useRef<FlatList<FeedPost>>(null);
+  const [shuffleVersion, setShuffleVersion] = useState(0);
   const [visitingIds, setVisitingIds] = useState<string[]>([]);
   const [bookmarkingIds, setBookmarkingIds] = useState<string[]>([]);
   const setAuthIntent = useAuthIntentStore((state) => state.setIntent);
@@ -37,32 +46,115 @@ export default function HomeScreen() {
   const saveBookmark = useBookmarkStore((state) => state.saveBookmark);
   const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
 
-  useEffect(() => {
-    async function loadHome() {
-      try {
-        const data = await getFeed();
-
-        setPosts(data.content);
-
-        data.content.forEach((post: FeedPost) => {
-          if (explored[post.id] === undefined) {
-            setExplored(post.id, post.visited);
-          }
-        });
-      } catch (error: any) {
-        console.log(
-          'Failed to load home:',
-          error?.response?.data ?? error?.message
-        );
-      } finally {
-        setLoading(false);
+  const {
+    data: feedData,
+    isPending,
+    error: feedError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isRefetching,
+    refetch: refetchFeed,
+  } = useInfiniteQuery({
+    queryKey: ['feed', 'home', 'infinite'],
+    queryFn: ({ pageParam }) => getFeed(pageParam.page, 10),
+    initialPageParam: {
+      page: 0,
+      cycle: 0,
+    },
+    getNextPageParam: (lastPage, _allPages, lastPageParam) => {
+      if (lastPage.totalElements === 0) {
+        return undefined;
       }
+
+      if (lastPage.last) {
+        return {
+          page: 0,
+          cycle: lastPageParam.cycle + 1,
+        };
+      }
+
+      return {
+        page: lastPage.page + 1,
+        cycle: lastPageParam.cycle,
+      };
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const posts = useMemo(() => {
+    if (!feedData || feedData.pages.length === 0) {
+      return [];
     }
 
-    void loadHome();
-  }, []);
+    return feedData.pages.flatMap((page, pageIndex) =>
+      [...page.content].sort(
+        (left, right) =>
+          feedShuffleScore(
+            left.id,
+            shuffleVersion + pageIndex * 1009
+          ) -
+          feedShuffleScore(
+            right.id,
+            shuffleVersion + pageIndex * 1009
+          )
+      )
+    );
+  }, [feedData, shuffleVersion]);
 
-  if (loading) {
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress', () => {
+      if (!navigation.isFocused()) {
+        return;
+      }
+
+      listRef.current?.scrollToOffset({
+        offset: 0,
+        animated: true,
+      });
+
+      setShuffleVersion((current) => current + 1);
+
+      void queryClient.resetQueries({
+        queryKey: ['feed', 'home', 'infinite'],
+        exact: true,
+      });
+    });
+
+    return unsubscribe;
+  }, [navigation, queryClient]);
+
+  useEffect(() => {
+    if (!feedData) {
+      return;
+    }
+
+    feedData.pages.forEach((page) => {
+      page.content.forEach((post: FeedPost) => {
+        const currentExplored =
+          useExploredStore.getState().explored;
+
+        if (currentExplored[post.id] === undefined) {
+          setExplored(post.id, post.visited);
+        }
+      });
+    });
+  }, [feedData, setExplored]);
+
+  useEffect(() => {
+    if (!feedError) {
+      return;
+    }
+
+    const error = feedError as any;
+
+    console.log(
+      'Failed to load home:',
+      error?.response?.data ?? error?.message
+    );
+  }, [feedError]);
+
+  if (isPending) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
@@ -90,9 +182,47 @@ export default function HomeScreen() {
       </View>
 
       <FlatList
+        ref={listRef}
         data={posts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
         contentContainerStyle={styles.feed}
+        showsVerticalScrollIndicator={false}
+        refreshing={isRefetching && !isFetchingNextPage}
+        onRefresh={() => {
+          setShuffleVersion((current) => current + 1);
+
+          void queryClient.resetQueries({
+            queryKey: ['feed', 'home', 'infinite'],
+            exact: true,
+          });
+        }}
+        onScroll={({ nativeEvent }) => {
+          const visibleBottom =
+            nativeEvent.contentOffset.y +
+            nativeEvent.layoutMeasurement.height;
+
+          const remaining =
+            nativeEvent.contentSize.height - visibleBottom;
+
+          const preloadDistance =
+            nativeEvent.layoutMeasurement.height * 2;
+
+          if (
+            remaining < preloadDistance &&
+            hasNextPage &&
+            !isFetchingNextPage
+          ) {
+            void fetchNextPage();
+          }
+        }}
+        scrollEventThrottle={250}
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View style={{ paddingVertical: 24 }}>
+              <ActivityIndicator />
+            </View>
+          ) : null
+        }
         renderItem={({ item }) => (
           <View style={styles.post}>
             <Pressable
@@ -262,7 +392,6 @@ export default function HomeScreen() {
         )}
       />
 
-      <BottomNav />
     </View>
   );
 }

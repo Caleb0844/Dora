@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { checkInPlace } from '@/features/profile/check-in-service';
+import { queryClient } from '@/services/query/query-client';
 
 type ExploredMap = Record<string, boolean>;
 
@@ -28,6 +29,19 @@ export const useExploredStore = create<ExploredStore>((set, get) => ({
 
     try {
       await checkInPlace(placeId);
+
+      queryClient.setQueryData<Set<string>>(
+        ['profile', 'me', 'visited-ids'],
+        (current) => {
+          const next = new Set(current ?? []);
+          next.add(placeId);
+          return next;
+        }
+      );
+
+      await queryClient.invalidateQueries({
+        queryKey: ['profile', 'me', 'visited'],
+      });
     } catch (error: any) {
       if (previousValue === undefined) {
         set((state) => {

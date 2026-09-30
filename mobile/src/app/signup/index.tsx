@@ -39,7 +39,7 @@ export default function SignupScreen() {
         profileImageUrl: null,
       });
 
-      resumeAfterAuth();
+      await resumeAfterAuth();
     } catch (error: any) {
       const message =
         error?.response?.data?.message ??

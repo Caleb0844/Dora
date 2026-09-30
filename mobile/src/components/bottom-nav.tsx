@@ -1,43 +1,97 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, usePathname } from 'expo-router';
+import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { getAccessToken } from '@/services/storage/auth-storage';
 import { useAuthIntentStore } from '@/store/auth-intent';
 import { theme } from '@/theme';
 
-const items = [
-  { label: 'Home', icon: 'home-outline', activeIcon: 'home', route: '/' },
-  { label: 'Near You', icon: 'location-outline', activeIcon: 'location', route: '/nearby' },
-  { label: 'Add', icon: 'add', activeIcon: 'add', route: '/add' },
-  { label: 'Collab', icon: 'people-outline', activeIcon: 'people', route: '/collab' },
-  { label: 'Profile', icon: 'person-outline', activeIcon: 'person', route: '/profile' },
-] as const;
+const items = {
+  index: {
+    icon: 'home-outline',
+    activeIcon: 'home',
+  },
+  'nearby/index': {
+    icon: 'location-outline',
+    activeIcon: 'location',
+  },
+  'add/index': {
+    icon: 'add',
+    activeIcon: 'add',
+    protectedRoute: '/add' as const,
+  },
+  'collab/index': {
+    icon: 'people-outline',
+    activeIcon: 'people',
+  },
+  'profile/index': {
+    icon: 'person-outline',
+    activeIcon: 'person',
+    protectedRoute: '/profile' as const,
+  },
+} as const;
 
-export function BottomNav() {
-  const pathname = usePathname();
-  const setIntent = useAuthIntentStore((state) => state.setIntent);
+type TabRoute = {
+  key: string;
+  name: string;
+};
+
+type BottomNavProps = {
+  state: {
+    index: number;
+    routes: TabRoute[];
+  };
+  navigation: {
+    emit: (event: {
+      type: 'tabPress';
+      target: string;
+      canPreventDefault: true;
+    }) => {
+      defaultPrevented: boolean;
+    };
+    navigate: (name: string) => void;
+  };
+};
+
+export function BottomNav({
+  state,
+  navigation,
+}: BottomNavProps) {
+  const setIntent = useAuthIntentStore((store) => store.setIntent);
 
   return (
     <View style={styles.container}>
-      {items.map((item) => {
-        const active =
-          item.route === '/'
-            ? pathname === '/'
-            : pathname.startsWith(item.route);
+      {state.routes.map((route, index) => {
+        const item = items[route.name as keyof typeof items];
+
+        if (!item) {
+          return null;
+        }
+
+        const active = state.index === index;
 
         return (
           <Pressable
-            key={item.label}
+            key={route.key}
             style={styles.item}
             onPress={async () => {
-              if (item.route === '/add' || item.route === '/profile') {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+
+              if (event.defaultPrevented) {
+                return;
+              }
+
+              if ('protectedRoute' in item) {
                 const accessToken = await getAccessToken();
 
                 if (!accessToken) {
                   setIntent({
                     type: 'route',
-                    route: item.route,
+                    route: item.protectedRoute,
                   });
 
                   router.push('/login');
@@ -45,10 +99,13 @@ export function BottomNav() {
                 }
               }
 
-              router.replace(item.route);
+              if (!active) {
+                navigation.navigate(route.name);
+              }
             }}
+            accessibilityRole="button"
           >
-            {item.label === 'Add' ? (
+            {route.name === 'add/index' ? (
               <View style={styles.addButton}>
                 <Ionicons
                   name="add"
@@ -60,10 +117,13 @@ export function BottomNav() {
               <Ionicons
                 name={active ? item.activeIcon : item.icon}
                 size={23}
-                color={active ? theme.colors.green : theme.colors.muted}
+                color={
+                  active
+                    ? theme.colors.green
+                    : theme.colors.muted
+                }
               />
             )}
-
           </Pressable>
         );
       })}
@@ -87,7 +147,6 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
   },
   addButton: {
     width: 42,

@@ -1,6 +1,6 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   ActivityIndicator,
@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
-import { BottomNav } from '@/components/bottom-nav';
 import { TwendePost } from '@/components/twende-post';
 import {
   getNearbyPlaces,
@@ -30,61 +29,69 @@ const distances = ['1', '5', '10', '15', '20', '30', '40', 'Custom', 'All'];
 export default function NearbyScreen() {
   const [selected, setSelected] = useState('20');
   const [distanceMenuOpen, setDistanceMenuOpen] = useState(false);
-  const [places, setPlaces] = useState<NearbyPlace[]>([]);
-  const [visitedIds, setVisitedIds] = useState<Set<string>>(new Set());
-  const [visitedIdsLoaded, setVisitedIdsLoaded] = useState(false);
   const [checkingInIds, setCheckingInIds] = useState<Set<string>>(new Set());
   const checkingInIdsRef = useRef<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const radius =
+    selected === 'Custom' ? null : Number(selected);
 
-  async function loadNearby(radius: number) {
-    try {
-      setLoading(true);
-      setError('');
+  const locationQuery = useQuery({
+    queryKey: ['location', 'current'],
+    queryFn: getCurrentLocation,
+    staleTime: 2 * 60_000,
+    gcTime: 10 * 60_000,
+  });
 
-      const location = await getCurrentLocation();
-
-      const data = await getNearbyPlaces({
-        latitude: location.latitude,
-        longitude: location.longitude,
-        radius,
+  const nearbyQuery = useQuery({
+    queryKey: [
+      'nearby',
+      locationQuery.data?.latitude ?? null,
+      locationQuery.data?.longitude ?? null,
+      radius,
+    ],
+    queryFn: () =>
+      getNearbyPlaces({
+        latitude: locationQuery.data!.latitude,
+        longitude: locationQuery.data!.longitude,
+        radius: radius!,
         size: 20,
-      });
+      }),
+    enabled:
+      !!locationQuery.data &&
+      radius !== null &&
+      Number.isFinite(radius),
+    staleTime: 2 * 60_000,
+  });
 
-      setPlaces(data.places ?? []);
-    } catch (err: any) {
-      setError(err?.message ?? 'Unable to load nearby places.');
-    } finally {
-      setLoading(false);
-    }
-  }
+  const places: NearbyPlace[] =
+    nearbyQuery.data?.places ?? [];
 
-  useEffect(() => {
-    loadNearby(20);
-  }, []);
+  const loading =
+    locationQuery.isPending || nearbyQuery.isPending;
 
-  useEffect(() => {
-    let isActive = true;
+  const error =
+    locationQuery.error || nearbyQuery.error;
 
-    async function loadVisited() {
+  const queryClient = useQueryClient();
+
+  const visitedIdsQuery = useQuery({
+    queryKey: ['profile', 'me', 'visited-ids'],
+    queryFn: async () => {
       try {
-        const placeIds = await getAllVisitedPlaceIds();
-        if (isActive) {
-          setVisitedIds(placeIds);
-          setVisitedIdsLoaded(true);
+        return await getAllVisitedPlaceIds();
+      } catch (error: any) {
+        // Nearby is public. Guests simply have no authenticated visit history.
+        if (error?.response?.status === 401) {
+          return new Set<string>();
         }
-      } catch {
-        Alert.alert('Unable to load visits', 'Check-ins are temporarily unavailable.');
+
+        throw error;
       }
-    }
+    },
+    staleTime: 5 * 60_000,
+  });
 
-    loadVisited();
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
+  const visitedIds =
+    visitedIdsQuery.data ?? new Set<string>();
 
   async function handleVisitedPress(placeId: string) {
     if (visitedIds.has(placeId) || checkingInIdsRef.current.has(placeId)) {
@@ -96,7 +103,19 @@ export default function NearbyScreen() {
 
     try {
       await checkInPlace(placeId);
-      setVisitedIds((current) => new Set(current).add(placeId));
+
+      queryClient.setQueryData<Set<string>>(
+        ['profile', 'me', 'visited-ids'],
+        (current) => {
+          const next = new Set(current ?? []);
+          next.add(placeId);
+          return next;
+        }
+      );
+
+      await queryClient.invalidateQueries({
+        queryKey: ['profile', 'me', 'visited'],
+      });
     } catch {
       Alert.alert('Check-in failed', 'Please try again.');
     } finally {
@@ -119,7 +138,6 @@ export default function NearbyScreen() {
     }
 
     setSelected(distance);
-    loadNearby(Number(distance));
   }
 
   return (
@@ -185,7 +203,9 @@ export default function NearbyScreen() {
         </View>
       ) : error ? (
         <View style={styles.center}>
-          <Text style={styles.error}>{error}</Text>
+          <Text style={styles.error}>
+            {(error as any)?.message ?? 'Unable to load nearby places.'}
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -208,14 +228,13 @@ export default function NearbyScreen() {
               creatorDisplayName={item.creatorDisplayName}
               creatorProfileImage={item.creatorProfileImage}
               visited={visitedIds.has(item.id)}
-              visiting={!visitedIdsLoaded || checkingInIds.has(item.id)}
+              visiting={visitedIdsQuery.isPending || checkingInIds.has(item.id)}
               onVisitedPress={handleVisitedPress}
             />
           )}
         />
       )}
 
-      <BottomNav />
     </View>
   );
 }

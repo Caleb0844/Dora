@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -32,9 +32,11 @@ export default function PublicProfileScreen() {
   const [places, setPlaces] = useState<PublicProfilePlace[]>([]);
   const [page, setPage] = useState(0);
   const [lastPage, setLastPage] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(username));
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    username ? null : 'User not found.'
+  );
 
   const [sort, setSort] =
     useState<PublicProfileSort>('newest');
@@ -47,7 +49,7 @@ export default function PublicProfileScreen() {
 
   const initialPlacesLoaded = useRef(false);
   const profileSearchRequestId = useRef(0);
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const scrollY = useMemo(() => new Animated.Value(0), []);
 
   const avatarScale = scrollY.interpolate({
     inputRange: [0, 150],
@@ -109,17 +111,7 @@ export default function PublicProfileScreen() {
     extrapolate: 'clamp',
   });
 
-  useEffect(() => {
-    if (!username) {
-      setError('User not found.');
-      setLoading(false);
-      return;
-    }
-
-    loadInitial(username);
-  }, [username]);
-
-  async function loadInitial(targetUsername: string) {
+  const loadInitial = useCallback(async (targetUsername: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -151,12 +143,25 @@ export default function PublicProfileScreen() {
       initialPlacesLoaded.current = true;
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function reloadPlaces(
+  /* eslint-disable react-hooks/set-state-in-effect --
+   * This effect intentionally starts the async profile load when the route
+   * username changes. State updates occur inside the async request lifecycle.
+   */
+  useEffect(() => {
+    if (!username) {
+      return;
+    }
+
+    void loadInitial(username);
+  }, [username, loadInitial]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const reloadPlaces = useCallback(async (
     targetSearch: string,
     targetSort: PublicProfileSort
-  ) {
+  ) => {
     if (!username) {
       return;
     }
@@ -187,7 +192,7 @@ export default function PublicProfileScreen() {
         );
       }
     }
-  }
+  }, [username]);
 
   useEffect(() => {
     if (!initialPlacesLoaded.current || !username) {
@@ -201,7 +206,7 @@ export default function PublicProfileScreen() {
     return () => {
       clearTimeout(timeout);
     };
-  }, [searchQuery, sort, username]);
+  }, [searchQuery, sort, username, reloadPlaces]);
 
   async function loadMore() {
     if (!username || loadingMore || lastPage) {
