@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import {
   Alert,
   Image,
@@ -26,6 +26,7 @@ import {
   uploadImageToCloudinary,
 } from '@/services/api/cloudinary-service';
 import { createPlace, getPlace, updatePlace } from '@/services/api/place-service';
+import { useLocationSelectionStore } from '@/store/location-selection';
 import { theme } from '@/theme';
 
 export default function AddPlaceScreen() {
@@ -47,6 +48,22 @@ export default function AddPlaceScreen() {
   const [gettingLocation, setGettingLocation] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  const selectedLocation =
+    useLocationSelectionStore((state) => state.selectedLocation);
+
+  const clearSelectedLocation =
+    useLocationSelectionStore((state) => state.clearSelectedLocation);
+
+  useEffect(() => {
+    if (!selectedLocation) {
+      return;
+    }
+
+    setLatitude(selectedLocation.latitude);
+    setLongitude(selectedLocation.longitude);
+    clearSelectedLocation();
+  }, [selectedLocation, clearSelectedLocation]);
 
   useEffect(() => {
     getCategories()
@@ -288,8 +305,36 @@ export default function AddPlaceScreen() {
         accuracy: Location.Accuracy.High,
       });
 
-      setLatitude(Number(location.coords.latitude.toFixed(6)));
-      setLongitude(Number(location.coords.longitude.toFixed(6)));
+      const nextLatitude = Number(location.coords.latitude.toFixed(6));
+      const nextLongitude = Number(location.coords.longitude.toFixed(6));
+      const gpsAccuracy = location.coords.accuracy ?? null;
+
+      if (gpsAccuracy !== null && gpsAccuracy > 50) {
+        Alert.alert(
+          'Low GPS accuracy',
+          `Your current GPS accuracy is about ±${Math.round(
+            gpsAccuracy
+          )} m. Use the satellite picker for a more precise location.`,
+          [
+            {
+              text: 'Use anyway',
+              onPress: () => {
+                setLatitude(nextLatitude);
+                setLongitude(nextLongitude);
+              },
+            },
+            {
+              text: 'Satellite picker',
+              onPress: () => router.push('/location/picker'),
+            },
+          ]
+        );
+
+        return;
+      }
+
+      setLatitude(nextLatitude);
+      setLongitude(nextLongitude);
     } catch {
       Alert.alert('Location error', 'Could not get your current location.');
     } finally {
@@ -454,6 +499,21 @@ export default function AddPlaceScreen() {
         </Text>
 
         <Text style={styles.label}>LOCATION</Text>
+
+        <Pressable
+          style={styles.updateLocation}
+          onPress={() => router.push('/location/picker')}
+        >
+          <Ionicons
+            name="map-outline"
+            size={24}
+            color={theme.colors.white}
+          />
+          <Text style={styles.updateLocationText}>
+            Test satellite picker
+          </Text>
+        </Pressable>
+
 
         <View style={styles.locationMode}>
           <Pressable style={[styles.locationOption, styles.locationActive]}>
