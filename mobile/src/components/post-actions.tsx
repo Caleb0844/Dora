@@ -1,5 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { theme } from '@/theme';
 
@@ -12,43 +16,31 @@ type PostActionsProps = {
 };
 
 export function PostActions({
-  visited = false,
-  visiting = false,
   bookmarked = false,
-  onVisitedPress,
   onBookmarkPress,
 }: PostActionsProps) {
   return (
     <View style={styles.container}>
-      <View style={styles.left}>
-        <Pressable
-          style={styles.action}
-          onPress={onVisitedPress}
-          disabled={visited || visiting}
-        >
-          <Ionicons
-            name={visited ? 'checkmark-circle' : 'checkmark-circle-outline'}
-            size={25}
-            color={visited ? theme.colors.accent : theme.colors.primary}
-          />
-          <Text style={styles.label}>Explored</Text>
-        </Pressable>
-
-        <Pressable style={styles.action}>
-          <Ionicons
-            name="information-circle-outline"
-            size={25}
-            color={theme.colors.primary}
-          />
-          <Text style={styles.label}>Details</Text>
-        </Pressable>
-      </View>
-
-      <Pressable onPress={onBookmarkPress}>
+      <Pressable
+        style={styles.bookmarkAction}
+        onPress={onBookmarkPress}
+        accessibilityRole="button"
+        accessibilityLabel={
+          bookmarked ? 'Remove saved place' : 'Save place'
+        }
+      >
         <Ionicons
-          name={bookmarked ? 'bookmark' : 'bookmark-outline'}
-          size={26}
-          color={bookmarked ? theme.colors.accent : theme.colors.primary}
+          name={
+            bookmarked
+              ? 'bookmark'
+              : 'bookmark-outline'
+          }
+          size={27}
+          color={
+            bookmarked
+              ? theme.colors.accent
+              : theme.colors.primary
+          }
         />
       </Pressable>
     </View>
@@ -58,24 +50,16 @@ export function PostActions({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingVertical: 8,
     backgroundColor: theme.colors.surface,
   },
-  left: {
-    flexDirection: 'row',
-    gap: 22,
-  },
-  action: {
-    flexDirection: 'row',
+  bookmarkAction: {
+    width: 42,
+    height: 42,
     alignItems: 'center',
-    gap: 6,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.primary,
+    justifyContent: 'center',
   },
 });

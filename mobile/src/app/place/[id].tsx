@@ -1,10 +1,11 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Linking,
   Pressable,
   ScrollView,
@@ -15,9 +16,101 @@ import {
 } from 'react-native';
 
 import { getPlace, type PlaceDetails } from '@/services/api/place-service';
+import { useAuthIntentStore } from '@/store/auth-intent';
+import { useAuthPromptStore } from '@/store/auth-prompt';
+import { useAuthSessionStore } from '@/store/auth-session';
 import { useBookmarkStore } from '@/store/bookmarks';
 import { useExploredStore } from '@/store/explored';
 import { theme } from '@/theme';
+
+function formatPlaceDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const day = date.getDate();
+  const month = date
+    .toLocaleDateString('en-US', { month: 'short' });
+
+  return `${day} ${month}`;
+}
+
+function CreatorMetaSwitch({
+  county,
+  createdAt,
+}: {
+  county: string;
+  createdAt: string;
+}) {
+  const [showDate, setShowDate] = useState(false);
+  const [translateY] = useState(() => new Animated.Value(0));
+  const [opacity] = useState(() => new Animated.Value(1));
+
+  useEffect(() => {
+    let running = false;
+
+    const interval = setInterval(() => {
+      if (running) return;
+
+      running = true;
+
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: -8,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setShowDate((current) => !current);
+
+        translateY.setValue(8);
+
+        Animated.parallel([
+          Animated.timing(translateY, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 220,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          running = false;
+        });
+      });
+    }, 2600);
+
+    return () => clearInterval(interval);
+  }, [opacity, translateY]);
+
+  return (
+    <View style={styles.metaSwitch}>
+      <Animated.Text
+        numberOfLines={1}
+        style={[
+          styles.metaSwitchText,
+          {
+            opacity,
+            transform: [{ translateY }],
+          },
+        ]}
+      >
+        {showDate
+          ? formatPlaceDate(createdAt)
+          : county}
+      </Animated.Text>
+    </View>
+  );
+}
 
 export default function PlaceDetailsScreen() {
   const { id, fromProfile } = useLocalSearchParams<{
@@ -33,6 +126,13 @@ export default function PlaceDetailsScreen() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [savingBookmark, setSavingBookmark] = useState(false);
   const [markingExplored, setMarkingExplored] = useState(false);
+
+  const authStatus = useAuthSessionStore((state) => state.status);
+  const setAuthIntent = useAuthIntentStore((state) => state.setIntent);
+  const openAuthPrompt = useAuthPromptStore(
+    (state) => state.openPrompt
+  );
+
   const bookmarks = useBookmarkStore((state) => state.bookmarks);
   const explored = useExploredStore((state) => state.explored);
   const setExplored = useExploredStore((state) => state.setExplored);
@@ -101,6 +201,16 @@ export default function PlaceDetailsScreen() {
       return;
     }
 
+    if (authStatus !== 'authenticated') {
+      setAuthIntent({
+        type: 'explore',
+        placeId,
+      });
+
+      openAuthPrompt('explore');
+      return;
+    }
+
     try {
       setMarkingExplored(true);
 
@@ -134,7 +244,20 @@ const url =
 
   return (
     <View style={styles.screen}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <Pressable
+        style={styles.fixedBackButton}
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        hitSlop={10}
+      >
+        <Ionicons
+          name="arrow-back"
+          size={22}
+          color={theme.colors.text}
+        />
+      </Pressable>
+
         {place.creator && (
           <Pressable
             style={styles.creatorHeader}
@@ -166,21 +289,30 @@ const url =
               )}
             </View>
             <View style={styles.headerCreatorInfo}>
-              <Text style={styles.headerDisplayName}>
+              <Text
+                style={styles.headerDisplayName}
+                numberOfLines={1}
+              >
                 {place.creator.displayName ?? place.creator.username}
               </Text>
 
-              <Text style={styles.headerUsername}>
-                @{place.creator.username}
-              </Text>
+              <View style={styles.headerMetaRow}>
+                <Text style={styles.headerUsername}>
+                  @{place.creator.username}
+                </Text>
 
-              <Text style={styles.headerCounty}>
-                {place.county}
-              </Text>
+                <Text style={styles.headerMetaSeparator}>·</Text>
+
+                <CreatorMetaSwitch
+                  county={place.county}
+                  createdAt={place.createdAt}
+                />
+              </View>
             </View>
           </Pressable>
         )}
 
+      <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
           <ScrollView
             horizontal
@@ -210,10 +342,6 @@ const url =
             )}
           </ScrollView>
 
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={21} color="#FFFFFF" />
-          </Pressable>
-
           {images.length > 0 && (
             <View style={styles.counter}>
               <Text style={styles.counterText}>
@@ -238,159 +366,149 @@ const url =
         </View>
 
         <View style={styles.content}>
-          <View style={styles.titleRow}>
-            <Text style={styles.title}>{place.name}</Text>
+          <Text style={styles.title}>
+            {place.name}
+          </Text>
 
-            <View style={styles.categoryPill}>
-              <Text style={styles.categoryText}>{place.category}</Text>
-            </View>
-          </View>
+          <View style={styles.placeActions}>
+            <Text
+              style={styles.categoryText}
+              numberOfLines={1}
+            >
+              {place.category}
+            </Text>
 
-          <View style={styles.locationRow}>
             <Pressable
-              style={styles.locationMapButton}
+              style={styles.mapAction}
               accessibilityRole="button"
-              accessibilityLabel="Open map"
+              accessibilityLabel="Open in Google Maps"
               onPress={handleOpenMap}
+              hitSlop={8}
+            >
+              <MaterialCommunityIcons
+                name="google-maps"
+                size={28}
+                color={theme.colors.green}
+              />
+            </Pressable>
+
+            <View style={styles.actionSpacer} />
+
+            <Pressable
+              style={[
+                styles.bookmarkAction,
+                savingBookmark && styles.actionDisabled,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isBookmarked ? 'Remove saved place' : 'Save place'
+              }
+              disabled={savingBookmark}
+              onPress={async () => {
+                if (!placeId || savingBookmark) {
+                  return;
+                }
+
+                if (authStatus !== 'authenticated') {
+                  setAuthIntent({
+                    type: 'bookmark',
+                    placeId,
+                  });
+
+                  openAuthPrompt('bookmark');
+                  return;
+                }
+
+                const previousEffectiveValue =
+                  bookmarks[placeId] ?? Boolean(place?.bookmarked);
+
+                const shouldSave = !previousEffectiveValue;
+
+                setSavingBookmark(true);
+
+                try {
+                  if (shouldSave) {
+                    await saveBookmark(placeId);
+                  } else {
+                    await removeBookmark(placeId);
+                  }
+                } finally {
+                  setSavingBookmark(false);
+                }
+              }}
             >
               <Ionicons
-                name="map-outline"
-                size={19}
-                color={theme.colors.green}
+                name={
+                  isBookmarked
+                    ? 'bookmark'
+                    : 'bookmark-outline'
+                }
+                size={23}
+                color="#FFFFFF"
               />
             </Pressable>
           </View>
 
           <Pressable
             style={[
-              styles.saveButton,
-              isBookmarked && styles.saveButtonSaved,
-              savingBookmark && styles.saveButtonDisabled,
+              styles.exploreBar,
+              (explored[placeId] ?? place.explored) &&
+                styles.exploreBarDone,
+              markingExplored && styles.actionDisabled,
             ]}
             accessibilityRole="button"
-            accessibilityLabel={isBookmarked ? 'Saved place' : 'Save place'}
-            disabled={savingBookmark}
-            onPress={async () => {
-              if (!placeId || savingBookmark) {
-                return;
-              }
-
-              const previousEffectiveValue =
-                bookmarks[placeId] ?? Boolean(place?.bookmarked);
-              const shouldSave = !previousEffectiveValue;
-
-              setSavingBookmark(true);
-
-              try {
-                if (shouldSave) {
-                  await saveBookmark(placeId);
-                } else {
-                  await removeBookmark(placeId);
-                }
-              } finally {
-                setSavingBookmark(false);
-              }
-            }}
+            accessibilityLabel={
+              (explored[placeId] ?? place.explored)
+                ? 'Place already explored'
+                : 'Mark place as explored'
+            }
+            disabled={
+              (explored[placeId] ?? place.explored) ||
+              markingExplored
+            }
+            onPress={handleMarkExplored}
           >
             <Ionicons
-              name={isBookmarked ? 'bookmark' : 'bookmark-outline'}
-              size={21}
-              color={theme.colors.white}
+              name={
+                (explored[placeId] ?? place.explored)
+                  ? 'checkmark-circle'
+                  : 'checkmark-circle-outline'
+              }
+              size={25}
+              color={
+                (explored[placeId] ?? place.explored)
+                  ? theme.colors.green
+                  : theme.colors.textSecondary
+              }
             />
-            <Text style={styles.saveButtonText}>
-              {isBookmarked ? 'Saved' : 'Save place'}
+
+            <Text style={styles.exploreBarText}>
+              {(explored[placeId] ?? place.explored)
+                ? 'Explored'
+                : 'Explore'}
+            </Text>
+
+            <View style={styles.exploreBarSpacer} />
+
+            <Text style={styles.explorerCount}>
+              {markingExplored
+                ? 'Saving...'
+                : `${place.explorerCount} ${
+                    place.explorerCount === 1
+                      ? 'explorer'
+                      : 'explorers'
+                  }`}
             </Text>
           </Pressable>
 
-          {place.creator && (
-            <Pressable
-              style={styles.creator}
-              onPress={() => {
-                if (fromProfile === '1') {
-                  router.back();
-                  return;
-                }
-
-                router.push({
-                  pathname: '/user/[username]',
-                  params: { username: place.creator.username },
-                });
-              }}
-            >
-              <View style={styles.avatar}>
-                {place.creator.profileImage ? (
-                  <Image
-                    source={{ uri: place.creator.profileImage }}
-                    style={styles.avatarImage}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <Ionicons
-                    name="person"
-                    size={24}
-                    color={theme.colors.textSecondary}
-                  />
-                )}
-              </View>
-
-              <View>
-                <Text style={styles.addedBy}>Added by</Text>
-                <Text style={styles.creatorName}>
-                  {place.creator.displayName ?? place.creator.username}
-                </Text>
-                {!!place.creator.username && (
-                  <Text style={styles.creatorUsername}>
-                    @{place.creator.username}
-                  </Text>
-                )}
-              </View>
-            </Pressable>
-          )}
-
           <View style={styles.descriptionSection}>
-            <Text style={styles.sectionTitle}>About this place</Text>
-            <Text style={styles.description}>{place.description}</Text>
-          </View>
+            <Text style={styles.sectionTitle}>
+              About this place
+            </Text>
 
-          <View style={styles.futureSection}>
-            <Text style={styles.sectionTitle}>More on Twende</Text>
-            <View style={styles.futureActions}>
-              <View style={styles.futureCard}>
-                <Ionicons name="star-outline" size={21} color={theme.colors.accent} />
-                <Text style={styles.futureTitle}>Ratings</Text>
-                <Text style={styles.futureText}>Coming later</Text>
-              </View>
-              <Pressable
-                style={styles.futureCard}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  (explored[placeId] ?? place.explored) ? 'Place already explored' : 'Mark place as explored'
-                }
-                disabled={(explored[placeId] ?? place.explored) || markingExplored}
-                onPress={handleMarkExplored}
-              >
-                <Ionicons
-                  name={(explored[placeId] ?? place.explored) ? 'checkmark-circle' : 'footsteps-outline'}
-                  size={21}
-                  color={theme.colors.green}
-                />
-                <Text style={styles.futureTitle}>
-                  {(explored[placeId] ?? place.explored) ? 'Explored' : 'Explore'}
-                </Text>
-                <Text style={styles.futureText}>
-                  {markingExplored
-                    ? 'Saving...'
-                    : `${place.explorerCount} ${
-                        place.explorerCount === 1 ? 'explorer' : 'explorers'
-                      }`}
-                </Text>
-              </Pressable>
-              <View style={styles.futureCard}>
-                <Ionicons name="share-social-outline" size={21} color={theme.colors.info} />
-                <Text style={styles.futureTitle}>Share</Text>
-                <Text style={styles.futureText}>Coming later</Text>
-              </View>
-            </View>
+            <Text style={styles.description}>
+              {place.description}
+            </Text>
           </View>
         </View>
       </ScrollView>
@@ -418,14 +536,26 @@ const styles = StyleSheet.create({
     color: theme.colors.green,
     fontWeight: '700',
   },
+  fixedBackButton: {
+    position: 'absolute',
+    top: 90,
+    left: 8,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 30,
+    elevation: 30,
+  },
+
   creatorHeader: {
-    minHeight: 96,
+    minHeight: 88,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 11,
-    paddingHorizontal: 20,
-    paddingTop: 42,
-    paddingBottom: 12,
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingTop: 40,
+    paddingBottom: 8,
     backgroundColor: theme.colors.background,
   },
   headerAvatar: {
@@ -443,20 +573,48 @@ const styles = StyleSheet.create({
   },
   headerCreatorInfo: {
     flex: 1,
+    minWidth: 0,
   },
   headerDisplayName: {
     color: theme.colors.text,
     fontSize: 15,
     fontWeight: '800',
   },
-  headerUsername: {
+  headerMetaRow: {
     marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerUsername: {
     color: theme.colors.green,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
+  headerMetaSeparator: {
+    marginHorizontal: 4,
+    color: theme.colors.textSecondary,
+    fontSize: 11,
+  },
   headerCounty: {
-    marginTop: 2,
+    flexShrink: 1,
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  headerDate: {
+    flexShrink: 0,
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  metaSwitch: {
+    position: 'relative',
+    height: 16,
+    minWidth: 72,
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  metaSwitchText: {
     color: theme.colors.textSecondary,
     fontSize: 12,
     fontWeight: '500',
@@ -479,163 +637,105 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: theme.colors.surfaceSoft,
   },
-  backButton: {
-    position: 'absolute',
-    top: 14,
-    left: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.surface,
-  },
   counter: {
     position: 'absolute',
-    top: 14,
-    right: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 24,
-    backgroundColor: theme.colors.surface,
+    top: 12,
+    right: 12,
   },
   counterText: {
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '600',
   },
   paginationDots: {
     position: 'absolute',
-    bottom: 16,
+    bottom: 8,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    gap: 5,
   },
   paginationDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.55)',
+  },
+  paginationDotSelected: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  paginationDotSelected: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
     backgroundColor: theme.colors.white,
   },
   content: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 18,
     paddingBottom: 60,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
   title: {
-    flex: 1,
-    flexShrink: 1,
-    fontSize: 36,
+    marginTop: 16,
+    fontSize: 30,
     fontWeight: '800',
     color: theme.colors.text,
   },
-  categoryPill: {
-    marginTop: 4,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 22,
-    backgroundColor: theme.colors.surfaceSoft,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  placeActions: {
+    marginTop: 12,
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   categoryText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.green,
-  },
-  locationRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  locationText: {
-    fontSize: 16,
-    color: theme.colors.textSecondary,
-  },
-  locationMapButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-  },
-  saveButton: {
-    marginTop: 22,
-    minHeight: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-    borderRadius: 14,
-    backgroundColor: theme.colors.green,
-  },
-  saveButtonSaved: {
-    backgroundColor: theme.colors.accent,
-  },
-  saveButtonDisabled: {
-    opacity: 0.7,
-  },
-  saveButtonText: {
-    color: theme.colors.white,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  creator: {
-    marginTop: 30,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-  },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    backgroundColor: theme.colors.surfaceSoft,
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  addedBy: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-  },
-  creatorName: {
-    marginTop: 2,
+    maxWidth: 170,
+    color: theme.colors.text,
     fontSize: 17,
     fontWeight: '700',
-    color: theme.colors.text,
   },
-  creatorUsername: {
-    marginTop: 3,
+  mapAction: {
+    width: 42,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionSpacer: {
+    flex: 1,
+  },
+  bookmarkAction: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionDisabled: {
+    opacity: 0.6,
+  },
+  exploreBar: {
+    marginTop: 14,
+    marginHorizontal: -12,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+  },
+  exploreBarDone: {
+    borderColor: theme.colors.green,
+  },
+  exploreBarText: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  exploreBarSpacer: {
+    flex: 1,
+  },
+  explorerCount: {
+    color: theme.colors.textSecondary,
     fontSize: 13,
-    color: theme.colors.greenMuted,
+    fontWeight: '600',
   },
   descriptionSection: {
     marginTop: 32,
@@ -651,32 +751,5 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     color: theme.colors.textSecondary,
   },
-  futureSection: {
-    marginTop: 34,
-  },
-  futureActions: {
-    marginTop: 14,
-    flexDirection: 'row',
-    gap: 9,
-  },
-  futureCard: {
-    flex: 1,
-    minHeight: 110,
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-  },
-  futureTitle: {
-    marginTop: 9,
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  futureText: {
-    marginTop: 3,
-    fontSize: 11,
-    color: theme.colors.textSecondary,
-  },
+
 });

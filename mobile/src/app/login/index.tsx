@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { resumeAfterAuth } from '@/features/auth/resume-after-auth';
 import { useAuthIntentStore } from '@/store/auth-intent';
@@ -20,7 +20,10 @@ import {
 import { theme } from '@/theme';
 
 export default function LoginScreen() {
-  const intent = useAuthIntentStore((state) => state.intent);
+  const { fromAuthPrompt } = useLocalSearchParams<{
+    fromAuthPrompt?: string;
+  }>();
+
   const clearIntent = useAuthIntentStore((state) => state.clearIntent);
 
   const [identifier, setIdentifier] = useState('');
@@ -77,35 +80,28 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <Pressable
-        style={styles.closeButton}
-        onPress={() => {
-          const cameFromProtectedTab =
-            intent?.type === 'route' &&
-            (intent.route === '/add' || intent.route === '/profile');
+      {fromAuthPrompt !== 'true' ? (
+        <Pressable
+          style={styles.closeButton}
+          onPress={() => {
+            clearIntent();
 
-          clearIntent();
-
-          if (cameFromProtectedTab) {
-            router.replace('/');
-            return;
-          }
-
-          if (router.canGoBack()) {
-            router.back();
-          } else {
-            router.replace('/');
-          }
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Close sign in"
-      >
-        <Ionicons
-          name="close"
-          size={30}
-          color={theme.colors.text}
-        />
-      </Pressable>
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/');
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Close sign in"
+        >
+          <Ionicons
+            name="close"
+            size={30}
+            color={theme.colors.text}
+          />
+        </Pressable>
+      ) : null}
 
       <Text style={styles.title}>Sign in</Text>
 

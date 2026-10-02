@@ -438,23 +438,17 @@ export default function PublicProfileScreen() {
             <View style={styles.controlButtons}>
               <Pressable
                 style={styles.sortButton}
+                accessibilityRole="button"
+                accessibilityLabel="Sort places"
                 onPress={() => {
                   setSearchOpen(false);
                   setSearchQuery('');
                   setSortMenuOpen((current) => !current);
                 }}
               >
-                <Text style={styles.sortButtonText}>
-                  {sort === 'newest' ? 'Newest' : 'Oldest'}
-                </Text>
-
                 <Ionicons
-                  name={
-                    sortMenuOpen
-                      ? 'chevron-up'
-                      : 'chevron-down'
-                  }
-                  size={15}
+                  name="options-outline"
+                  size={22}
                   color={theme.colors.text}
                 />
               </Pressable>
@@ -557,6 +551,7 @@ export default function PublicProfileScreen() {
         ) : (
           <>
             <ProfilePlaceGrid
+              publicProfileLayout
               places={places.map((place) => ({
                 id: place.id,
                 name: place.name,
@@ -667,14 +662,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   backButton: {
-    width: 42,
+    width: 36,
     height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   profileSection: {
     alignItems: 'center',
@@ -720,9 +711,11 @@ const styles = StyleSheet.create({
   stickyControls: {
     marginHorizontal: -16,
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingTop: 9,
+    paddingBottom: 9,
     backgroundColor: theme.colors.surfaceSoft,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border,
     zIndex: 20,
   },
   sectionHeader: {
@@ -737,8 +730,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: theme.colors.text,
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '700',
   },
   placeCount: {
     color: theme.colors.textSecondary,
@@ -751,30 +744,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sortButton: {
-    minHeight: 38,
-    paddingHorizontal: 11,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  sortButtonText: {
-    color: theme.colors.text,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+    width: 34,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  },
+  iconButton: {
+    width: 34,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sortMenu: {
     position: 'absolute',

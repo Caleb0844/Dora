@@ -9,6 +9,10 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         lazy: true,
+        tabBarStyle: {
+          position: 'absolute',
+          height: 58,
+        },
       }}
     >
       <Tabs.Screen name="index" />

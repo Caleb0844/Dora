@@ -212,12 +212,13 @@ export default function ExploreScreen() {
               theme.colors.textSecondary
             }
             returnKeyType="search"
+            autoFocus
             style={styles.input}
           />
 
           {query.length > 0 && (
             <Pressable
-              onPress={() => setQuery('')}
+              onPress={() => handleQueryChange('')}
               hitSlop={8}
             >
               <Ionicons
@@ -251,7 +252,7 @@ export default function ExploreScreen() {
                 {recents.map((item) => (
                   <Pressable
                     key={item.id}
-                    style={styles.resultCard}
+                    style={styles.recentRow}
                     onPress={() => {
                       void openPlace(item);
                     }}
@@ -385,8 +386,8 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingTop: 54,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingHorizontal: 10,
+    paddingBottom: 12,
     backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
@@ -411,38 +412,51 @@ const styles = StyleSheet.create({
   },
   searchBox: {
     width: '100%',
-    minHeight: 50,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 14,
-    borderRadius: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.textSecondary,
   },
   input: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 40,
     color: theme.colors.text,
     fontSize: 15,
   },
   results: {
-    padding: 16,
+    paddingTop: 10,
     paddingBottom: 90,
   },
   recentsSection: {
     marginBottom: 8,
   },
   recentsTitle: {
-    marginBottom: 12,
-    fontSize: 18,
+    marginHorizontal: 10,
+    marginBottom: 6,
+    fontSize: 15,
     fontWeight: '800',
     color: theme.colors.text,
+  },
+  recentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: theme.colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
   },
   resultCard: {
     flexDirection: 'row',
     gap: 12,
+    marginHorizontal: 10,
     marginBottom: 12,
     padding: 10,
     borderRadius: 14,

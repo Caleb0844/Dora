@@ -18,6 +18,7 @@ type Props = {
   places: ProfileGridPlace[];
   actionLabel?: string;
   secondaryActionLabel?: string;
+  publicProfileLayout?: boolean;
   onPressPlace?: (place: ProfileGridPlace) => void;
   onPrimaryAction?: (place: ProfileGridPlace) => void;
   onSecondaryAction?: (place: ProfileGridPlace) => void;
@@ -27,22 +28,55 @@ export function ProfilePlaceGrid({
   places,
   actionLabel,
   secondaryActionLabel,
+  publicProfileLayout = false,
   onPressPlace,
   onPrimaryAction,
   onSecondaryAction,
 }: Props) {
   return (
-    <View style={styles.grid}>
-      {places.map((place) => (
-        <View key={place.id} style={styles.card}>
+    <View
+      style={[
+        styles.grid,
+        publicProfileLayout && styles.publicGrid,
+      ]}
+    >
+      {places.map((place, index) => (
+        <View
+          key={place.id}
+          style={[
+            styles.card,
+            publicProfileLayout && styles.publicCard,
+            publicProfileLayout &&
+              index % 2 === 0 &&
+              styles.publicCardLeft,
+          ]}
+        >
           <Pressable onPress={() => onPressPlace?.(place)}>
             {place.image ? (
-              <Image source={{ uri: place.image }} style={styles.image} />
+              <Image
+                source={{ uri: place.image }}
+                style={[
+                  styles.image,
+                  publicProfileLayout && styles.publicImage,
+                ]}
+              />
             ) : (
-              <View style={styles.imagePlaceholder} />
+              <View
+                style={[
+                  styles.imagePlaceholder,
+                  publicProfileLayout &&
+                    styles.publicImagePlaceholder,
+                ]}
+              />
             )}
 
-            <Text numberOfLines={1} style={styles.name}>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.name,
+                publicProfileLayout && styles.publicName,
+              ]}
+            >
               {place.name}
             </Text>
           </Pressable>
@@ -124,5 +158,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: theme.colors.text,
+  },
+
+  publicGrid: {
+    justifyContent: 'flex-start',
+    columnGap: 0,
+    rowGap: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border,
+  },
+
+  publicCard: {
+    width: '50%',
+    paddingBottom: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: theme.colors.border,
+  },
+
+  publicCardLeft: {
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: theme.colors.border,
+  },
+
+  publicImage: {
+    borderRadius: 0,
+  },
+
+  publicImagePlaceholder: {
+    borderRadius: 0,
+  },
+
+  publicName: {
+    marginTop: 5,
+    paddingHorizontal: 5,
+    paddingBottom: 2,
   },
 });

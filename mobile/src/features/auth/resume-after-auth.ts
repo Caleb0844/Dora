@@ -12,10 +12,10 @@ export async function resumeAfterAuth() {
   const { intent, clearIntent } = useAuthIntentStore.getState();
 
   if (intent?.type === 'route') {
-    const route = intent.route;
-
+    // Add/Profile requests from guest mode should never resume
+    // the protected destination after authentication.
     clearIntent();
-    router.replace(route);
+    router.replace('/');
     return;
   }
 

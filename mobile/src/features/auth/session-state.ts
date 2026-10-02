@@ -19,14 +19,15 @@ type InfiniteFeedData = {
 export async function resetAccountScopedState(
   options: ResetAccountStateOptions = {}
 ) {
-  await Promise.all([
-    queryClient.cancelQueries({
-      queryKey: ['profile', 'me'],
-    }),
-    queryClient.cancelQueries({
-      queryKey: ['feed'],
-    }),
-  ]);
+  // Do not make authentication/navigation wait for query cancellation.
+  // These are cleanup operations and can finish in the background.
+  void queryClient.cancelQueries({
+    queryKey: ['profile', 'me'],
+  });
+
+  void queryClient.cancelQueries({
+    queryKey: ['feed'],
+  });
 
   useBookmarkStore.setState({
     bookmarks: {},

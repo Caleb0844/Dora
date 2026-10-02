@@ -22,7 +22,7 @@ import { getAllVisitedPlaceIds } from '@/features/profile/visited-service';
 import { getCurrentLocation } from '@/services/location/location-service';
 import { theme } from '@/theme';
 
-const distances = ['1', '5', '10', '15', '20', '30', '40', 'Custom', 'All'];
+const distances = ['1', '5', '10', '15', '20', '30', '40', 'All'];
 
 
 
@@ -31,8 +31,7 @@ export default function NearbyScreen() {
   const [distanceMenuOpen, setDistanceMenuOpen] = useState(false);
   const [checkingInIds, setCheckingInIds] = useState<Set<string>>(new Set());
   const checkingInIdsRef = useRef<Set<string>>(new Set());
-  const radius =
-    selected === 'Custom' ? null : Number(selected);
+  const radius = Number(selected);
 
   const locationQuery = useQuery({
     queryKey: ['location', 'current'],
@@ -132,17 +131,21 @@ export default function NearbyScreen() {
       return;
     }
 
-    if (distance === 'Custom') {
-      setSelected('Custom');
-      return;
-    }
-
     setSelected(distance);
   }
 
   return (
     <View style={styles.container}>
       <AppHeader />
+
+      {distanceMenuOpen && (
+        <Pressable
+          style={styles.menuDismissLayer}
+          onPress={() => setDistanceMenuOpen(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Close distance menu"
+        />
+      )}
 
       <View style={styles.filterSection}>
         <View style={styles.filterHeader}>
@@ -155,7 +158,7 @@ export default function NearbyScreen() {
             }
           >
             <Text style={styles.distanceSelectorText}>
-              {selected === 'Custom' || selected === 'All'
+              {selected === 'All'
                 ? selected
                 : `${selected} km`}
             </Text>
@@ -187,7 +190,7 @@ export default function NearbyScreen() {
                       styles.activeDistanceOptionText,
                   ]}
                 >
-                  {distance === 'Custom' || distance === 'All'
+                  {distance === 'All'
                     ? distance
                     : `${distance} km`}
                 </Text>
@@ -244,11 +247,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  menuDismissLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 5,
+  },
   filterSection: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingLeft: 10,
+    paddingRight: 8,
+    paddingTop: 6,
+    paddingBottom: 8,
     position: 'relative',
     zIndex: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
   },
   filterHeader: {
     flexDirection: 'row',
@@ -256,47 +267,48 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   title: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '700',
     color: theme.colors.text,
   },
   distanceSelector: {
-    minWidth: 105,
-    height: 42,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    minWidth: 96,
+    height: 34,
+    paddingHorizontal: 10,
+    borderRadius: 3,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 8,
   },
   distanceSelectorText: {
     color: theme.colors.text,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   chevron: {
     color: theme.colors.textSecondary,
-    fontSize: 10,
+    fontSize: 9,
   },
   distanceMenu: {
     position: 'absolute',
-    top: 62,
-    right: 16,
-    width: 130,
-    borderRadius: 12,
+    top: 46,
+    right: 8,
+    width: 118,
+    borderRadius: 2,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
     overflow: 'hidden',
     zIndex: 20,
+    elevation: 8,
   },
   distanceOption: {
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
   activeDistanceOption: {
     backgroundColor: theme.colors.surfaceSoft,

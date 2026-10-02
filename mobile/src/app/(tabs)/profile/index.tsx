@@ -45,6 +45,7 @@ import { theme } from '@/theme';
 export default function ProfileScreen() {
   const [editVisible, setEditVisible] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editProfileImageUrl, setEditProfileImageUrl] = useState('');
@@ -111,12 +112,27 @@ export default function ProfileScreen() {
   const loading = profileQuery.isPending;
 
   async function handleLogout() {
-    await logout();
+    if (loggingOut) {
+      return;
+    }
 
-    router.replace('/login');
+    setLoggingOut(true);
 
-    // Leave the authenticated screen before clearing its active cache.
-    // Otherwise the mounted Profile tree performs unnecessary rerender work.
+    try {
+      await logout();
+    } catch (error) {
+      // logout() clears local authentication in its cleanup path,
+      // so the user can still safely return to guest Home.
+      console.log('Logout request failed:', error);
+    }
+
+    setLoggingOut(false);
+
+    // Logout returns to the public landing experience, not Sign In.
+    router.replace('/');
+
+    // Clear account-specific cached state after leaving Profile so the
+    // guest Home transition is not blocked by cache cleanup work.
     requestAnimationFrame(() => {
       void resetAccountScopedState({
         clearAuthIntent: true,
@@ -232,9 +248,54 @@ export default function ProfileScreen() {
       <AppHeader />
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" />
-        </View>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.profileTop}>
+            <View style={styles.skeletonAvatar} />
+
+            <View style={styles.profileInfo}>
+              <View style={[styles.skeletonLine, styles.skeletonName]} />
+              <View style={[styles.skeletonLine, styles.skeletonUsername]} />
+              <View style={[styles.skeletonLine, styles.skeletonEmail]} />
+            </View>
+
+            <View style={styles.profileActions}>
+              <View style={styles.skeletonActionButton} />
+              <View style={styles.skeletonActionButton} />
+            </View>
+          </View>
+
+          <View style={styles.pointsCard}>
+            <View>
+              <View style={[styles.skeletonLine, styles.skeletonPointsLabel]} />
+              <View style={[styles.skeletonLine, styles.skeletonPointsValue]} />
+            </View>
+
+            <View style={styles.skeletonXpIcon} />
+          </View>
+
+          <View style={styles.skeletonTabs}>
+            <View style={styles.skeletonTab} />
+            <View style={styles.skeletonTab} />
+            <View style={styles.skeletonTab} />
+          </View>
+
+          <View style={styles.tabContent}>
+            <View style={styles.skeletonToolbar}>
+              <View style={styles.skeletonSearch} />
+              <View style={styles.skeletonSort} />
+            </View>
+
+            <View style={styles.skeletonGrid}>
+              <View style={styles.skeletonGridItem} />
+              <View style={styles.skeletonGridItem} />
+              <View style={styles.skeletonGridItem} />
+              <View style={styles.skeletonGridItem} />
+            </View>
+          </View>
+        </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.profileTop}>
@@ -280,7 +341,8 @@ export default function ProfileScreen() {
                   />
                 </Pressable>
 
-                <Pressable style={styles.logoutButton} onPress={handleLogout}>
+                <Pressable style={styles.logoutButton} onPress={handleLogout}
+          disabled={loggingOut}>
                   <Ionicons
                     name="log-out-outline"
                     size={18}
@@ -637,6 +699,90 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 18,
     paddingBottom: 24,
+  },
+  skeletonAvatar: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  skeletonLine: {
+    borderRadius: 8,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  skeletonName: {
+    width: '70%',
+    height: 20,
+  },
+  skeletonUsername: {
+    width: '48%',
+    height: 14,
+    marginTop: 9,
+  },
+  skeletonEmail: {
+    width: '82%',
+    height: 13,
+    marginTop: 8,
+  },
+  skeletonActionButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  skeletonPointsLabel: {
+    width: 38,
+    height: 13,
+  },
+  skeletonPointsValue: {
+    width: 72,
+    height: 32,
+    marginTop: 9,
+  },
+  skeletonXpIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  skeletonTabs: {
+    marginTop: 16,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  skeletonTab: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  skeletonToolbar: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  skeletonSearch: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  skeletonSort: {
+    width: 54,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  skeletonGridItem: {
+    width: '48%',
+    height: 140,
+    borderRadius: 14,
+    backgroundColor: theme.colors.surfaceSoft,
   },
   profileTop: {
     flexDirection: 'row',

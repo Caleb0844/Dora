@@ -114,14 +114,23 @@ export async function completeGoogleProfile(
 export async function logout() {
   const refreshToken = await getRefreshToken();
 
-  try {
-    if (refreshToken) {
-      await authApi.post('/api/auth/logout', {
+  // Local logout is the user-facing action.
+  // Do this first so the UI can become guest immediately.
+  useAuthSessionStore.getState().setGuest();
+  await removeTokens();
+
+  // Server-side refresh-token revocation is cleanup and must not
+  // hold the user on Profile while the network responds.
+  if (refreshToken) {
+    void authApi
+      .post('/api/auth/logout', {
         refreshToken,
+      })
+      .catch((error) => {
+        console.log(
+          'Remote logout cleanup failed:',
+          error?.response?.data ?? error?.message
+        );
       });
-    }
-  } finally {
-    await removeTokens();
-    useAuthSessionStore.getState().setGuest();
   }
 }
