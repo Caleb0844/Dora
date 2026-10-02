@@ -11,6 +11,11 @@ type ResetAccountStateOptions = {
 
 type FeedData = Awaited<ReturnType<typeof getFeed>>;
 
+type InfiniteFeedData = {
+  pages: FeedData[];
+  pageParams: unknown[];
+};
+
 export async function resetAccountScopedState(
   options: ResetAccountStateOptions = {}
 ) {
@@ -35,13 +40,27 @@ export async function resetAccountScopedState(
     queryKey: ['profile', 'me'],
   });
 
-  queryClient.setQueriesData<FeedData>(
+  queryClient.setQueriesData<FeedData | InfiniteFeedData>(
     {
       queryKey: ['feed'],
     },
     (current) => {
       if (!current) {
         return current;
+      }
+
+      if ('pages' in current) {
+        return {
+          ...current,
+          pages: current.pages.map((page) => ({
+            ...page,
+            content: page.content.map((post) => ({
+              ...post,
+              bookmarked: false,
+              visited: false,
+            })),
+          })),
+        };
       }
 
       return {

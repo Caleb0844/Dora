@@ -8,12 +8,18 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 
 import {
   register,
   startGoogleLogin,
 } from '@/features/auth/auth-service';
+import {
+  deleteCloudinaryUploadByToken,
+  uploadImageToCloudinary,
+} from '@/services/api/cloudinary-service';
 import { resumeAfterAuth } from '@/features/auth/resume-after-auth';
 import { theme } from '@/theme';
 
@@ -23,12 +29,47 @@ export default function SignupScreen() {
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [profileImage, setProfileImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  async function handlePickProfileImage() {
+    const permission =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (permission.status !== 'granted') {
+      Alert.alert(
+        'Photo permission required',
+        'Twende needs access to your photos to choose a profile picture.'
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      setProfileImage(result.assets[0].uri);
+    }
+  }
+
   async function handleSignup() {
+    let uploadedDeleteToken: string | null = null;
+
     try {
       setLoading(true);
+
+      let profileImageUrl: string | null = null;
+
+      if (profileImage) {
+        const upload = await uploadImageToCloudinary(profileImage);
+        profileImageUrl = upload.url;
+        uploadedDeleteToken = upload.deleteToken;
+      }
 
       await register({
         email,
@@ -36,11 +77,24 @@ export default function SignupScreen() {
         displayName,
         password,
         confirmPassword,
-        profileImageUrl: null,
+        profileImageUrl,
       });
+
+      uploadedDeleteToken = null;
 
       await resumeAfterAuth();
     } catch (error: any) {
+      if (uploadedDeleteToken) {
+        try {
+          await deleteCloudinaryUploadByToken(uploadedDeleteToken);
+        } catch (cleanupError) {
+          console.log(
+            'Failed to clean up signup profile image:',
+            cleanupError
+          );
+        }
+      }
+
       const message =
         error?.response?.data?.message ??
         'Could not create your account.';
@@ -97,6 +151,50 @@ export default function SignupScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.title}>Create account</Text>
+
+      <View style={styles.profilePhotoSection}>
+        <Pressable
+          style={styles.profilePhotoButton}
+          onPress={handlePickProfileImage}
+          disabled={loading || googleLoading}
+        >
+          {profileImage ? (
+            <Image
+              source={{ uri: profileImage }}
+              style={styles.profilePhoto}
+              contentFit="cover"
+            />
+          ) : (
+            <View style={styles.profilePhotoPlaceholder}>
+              <Text style={styles.profilePhotoPlaceholderText}>
+                Add photo
+              </Text>
+            </View>
+          )}
+        </Pressable>
+
+        <Pressable
+          onPress={handlePickProfileImage}
+          disabled={loading || googleLoading}
+        >
+          <Text style={styles.profilePhotoAction}>
+            {profileImage
+              ? 'Change profile photo'
+              : 'Add profile photo (optional)'}
+          </Text>
+        </Pressable>
+
+        {profileImage ? (
+          <Pressable
+            onPress={() => setProfileImage(null)}
+            disabled={loading || googleLoading}
+          >
+            <Text style={styles.removeProfilePhoto}>
+              Remove photo
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
 
       <TextInput
         value={email}
@@ -195,6 +293,40 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     marginBottom: 24,
+  },
+  profilePhotoSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  profilePhotoButton: {
+    marginBottom: 10,
+  },
+  profilePhoto: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+  },
+  profilePhotoPlaceholder: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profilePhotoPlaceholderText: {
+    color: theme.colors.textSecondary,
+    fontWeight: '700',
+  },
+  profilePhotoAction: {
+    color: theme.colors.accent,
+    fontWeight: '700',
+  },
+  removeProfilePhoto: {
+    marginTop: 8,
+    color: theme.colors.textSecondary,
   },
   input: {
     backgroundColor: theme.colors.surface,

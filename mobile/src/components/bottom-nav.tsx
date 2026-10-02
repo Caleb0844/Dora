@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { getAccessToken } from '@/services/storage/auth-storage';
 import { useAuthIntentStore } from '@/store/auth-intent';
+import { useAuthSessionStore } from '@/store/auth-session';
 import { theme } from '@/theme';
 
 const items = {
@@ -58,6 +58,7 @@ export function BottomNav({
   navigation,
 }: BottomNavProps) {
   const setIntent = useAuthIntentStore((store) => store.setIntent);
+  const authStatus = useAuthSessionStore((store) => store.status);
 
   return (
     <View style={styles.container}>
@@ -74,7 +75,7 @@ export function BottomNav({
           <Pressable
             key={route.key}
             style={styles.item}
-            onPress={async () => {
+            onPress={() => {
               const event = navigation.emit({
                 type: 'tabPress',
                 target: route.key,
@@ -85,18 +86,17 @@ export function BottomNav({
                 return;
               }
 
-              if ('protectedRoute' in item) {
-                const accessToken = await getAccessToken();
+              if (
+                'protectedRoute' in item &&
+                authStatus !== 'authenticated'
+              ) {
+                setIntent({
+                  type: 'route',
+                  route: item.protectedRoute,
+                });
 
-                if (!accessToken) {
-                  setIntent({
-                    type: 'route',
-                    route: item.protectedRoute,
-                  });
-
-                  router.push('/login');
-                  return;
-                }
+                router.push('/login');
+                return;
               }
 
               if (!active) {

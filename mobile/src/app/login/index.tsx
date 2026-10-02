@@ -20,6 +20,7 @@ import {
 import { theme } from '@/theme';
 
 export default function LoginScreen() {
+  const intent = useAuthIntentStore((state) => state.intent);
   const clearIntent = useAuthIntentStore((state) => state.clearIntent);
 
   const [identifier, setIdentifier] = useState('');
@@ -79,7 +80,16 @@ export default function LoginScreen() {
       <Pressable
         style={styles.closeButton}
         onPress={() => {
+          const cameFromProtectedTab =
+            intent?.type === 'route' &&
+            (intent.route === '/add' || intent.route === '/profile');
+
           clearIntent();
+
+          if (cameFromProtectedTab) {
+            router.replace('/');
+            return;
+          }
 
           if (router.canGoBack()) {
             router.back();

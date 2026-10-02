@@ -8,6 +8,7 @@ import {
   removeTokens,
   saveTokens,
 } from '@/services/storage/auth-storage';
+import { useAuthSessionStore } from '@/store/auth-session';
 
 const GOOGLE_AUTH_URL =
   process.env.EXPO_PUBLIC_GOOGLE_AUTH_URL;
@@ -40,6 +41,8 @@ async function saveAuthTokens(data: {
   refreshToken: string;
 }) {
   await saveTokens(data.accessToken, data.refreshToken);
+
+  useAuthSessionStore.getState().setAuthenticated();
 
   // A new authenticated identity must never inherit guest/previous-user
   // viewer state. Preserve auth intent so resumeAfterAuth() can finish it.
@@ -119,5 +122,6 @@ export async function logout() {
     }
   } finally {
     await removeTokens();
+    useAuthSessionStore.getState().setGuest();
   }
 }
