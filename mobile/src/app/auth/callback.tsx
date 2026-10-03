@@ -10,9 +10,12 @@ import {
 
 import { exchangeGoogleCode } from '@/features/auth/auth-service';
 import { resumeAfterAuth } from '@/features/auth/resume-after-auth';
+import { useAuthIntentStore } from '@/store/auth-intent';
 import { theme } from '@/theme';
 
 export default function AuthCallbackScreen() {
+  const clearIntent = useAuthIntentStore((state) => state.clearIntent);
+
   const params = useLocalSearchParams<{
     code?: string;
     profile_setup_required?: string;
@@ -20,7 +23,7 @@ export default function AuthCallbackScreen() {
     email?: string;
   }>();
 
-  const [message, setMessage] = useState('Completing Google sign-in...');
+  const [message, setMessage] = useState('Redirecting you to homepage...');
 
   useEffect(() => {
     async function handleCallback() {
@@ -47,16 +50,14 @@ export default function AuthCallbackScreen() {
 
         setMessage('Google sign-in could not be completed.');
 
+        clearIntent();
+
         Alert.alert(
           'Google sign-in failed',
-          'The Google callback did not contain the expected information.',
-          [
-            {
-              text: 'Back to sign in',
-              onPress: () => router.replace('/login'),
-            },
-          ]
+          'The Google callback did not contain the expected information.'
         );
+
+        router.replace('/');
       } catch (error: any) {
         const errorMessage =
           error?.response?.data?.message ??
@@ -64,16 +65,14 @@ export default function AuthCallbackScreen() {
 
         setMessage(errorMessage);
 
+        clearIntent();
+
         Alert.alert(
           'Google sign-in failed',
-          errorMessage,
-          [
-            {
-              text: 'Back to sign in',
-              onPress: () => router.replace('/login'),
-            },
-          ]
+          errorMessage
         );
+
+        router.replace('/');
       }
     }
 
@@ -92,7 +91,7 @@ export default function AuthCallbackScreen() {
         color={theme.colors.accent}
       />
 
-      <Text style={styles.title}>Google Sign-In</Text>
+      <Text style={styles.title}>Redirecting you to homepage</Text>
 
       <Text style={styles.text}>{message}</Text>
     </View>

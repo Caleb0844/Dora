@@ -3,11 +3,16 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { theme } from '@/theme';
 
-export type ProfilePlaceTab = 'saved' | 'added' | 'visited';
+export type ProfilePlaceTab =
+  | 'saved'
+  | 'added'
+  | 'visited'
+  | 'list';
 
 type Props = {
   activeTab: ProfilePlaceTab;
   onChange: (tab: ProfilePlaceTab) => void;
+  fullBleed?: boolean;
 };
 
 const tabs = [
@@ -26,14 +31,25 @@ const tabs = [
     icon: 'checkmark-outline',
     activeIcon: 'checkmark',
   },
+  {
+    key: 'list',
+    icon: 'list-outline',
+    activeIcon: 'list',
+  },
 ] as const;
 
 export function ProfilePlaceTabs({
   activeTab,
   onChange,
+  fullBleed = false,
 }: Props) {
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        fullBleed && styles.fullBleed,
+      ]}
+    >
       {tabs.map((tab) => {
         const active = activeTab === tab.key;
 
@@ -45,7 +61,7 @@ export function ProfilePlaceTabs({
           >
             <Ionicons
               name={active ? tab.activeIcon : tab.icon}
-              size={24}
+              size={23}
               color={
                 active
                   ? theme.colors.text
@@ -70,8 +86,12 @@ const styles = StyleSheet.create({
   container: {
     marginTop: 16,
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+  },
+  fullBleed: {
+    marginHorizontal: -16,
   },
   tab: {
     flex: 1,
@@ -83,8 +103,8 @@ const styles = StyleSheet.create({
   indicator: {
     position: 'absolute',
     bottom: -1,
-    left: 18,
-    right: 18,
+    left: 0,
+    right: 0,
     height: 2,
     backgroundColor: 'transparent',
   },

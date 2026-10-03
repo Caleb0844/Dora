@@ -17,6 +17,7 @@ import {
   getRecentPlaces,
   type RecentPlace,
 } from '@/features/places/recent-search-service';
+import { RequestErrorState } from '@/components/request-error-state';
 import {
   searchPlaces,
   type PlaceSummary,
@@ -32,6 +33,9 @@ export default function ExploreScreen() {
   const [lastPage, setLastPage] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<unknown | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<unknown | null>(null);
   const [recents, setRecents] = useState<RecentPlace[]>([]);
   const searchRequestId = useRef(0);
 
@@ -73,12 +77,18 @@ export default function ExploreScreen() {
     if (!normalized) {
       setResults([]);
       setSearched(false);
+      setSearching(false);
+      setSearchError(null);
+      setLoadMoreError(null);
       setPage(0);
       setLastPage(true);
       return;
     }
 
     try {
+      setSearching(true);
+      setSearchError(null);
+      setLoadMoreError(null);
       const data = await searchPlaces(
         normalized,
         0,
@@ -100,10 +110,15 @@ export default function ExploreScreen() {
 
       console.log('Search failed:', error);
       setResults([]);
+      setSearchError(error);
       setSearched(true);
     } finally {
-      // Request identity is still checked above so stale responses
-      // cannot overwrite newer search results.
+      // Only the newest request may control the visible loading state.
+      // A stale request finishing later must not hide a newer request's
+      // spinner.
+      if (requestId === searchRequestId.current) {
+        setSearching(false);
+      }
     }
   }
 
@@ -140,6 +155,9 @@ export default function ExploreScreen() {
 
     setResults([]);
     setSearched(false);
+    setSearching(false);
+    setSearchError(null);
+    setLoadMoreError(null);
     setPage(0);
     setLastPage(true);
   }
@@ -155,6 +173,7 @@ export default function ExploreScreen() {
 
     try {
       setLoadingMore(true);
+      setLoadMoreError(null);
 
       const data = await searchPlaces(
         query,
@@ -169,6 +188,9 @@ export default function ExploreScreen() {
 
       setPage(data.page);
       setLastPage(data.last);
+    } catch (error) {
+      console.log('Failed to load more search results:', error);
+      setLoadMoreError(error);
     } finally {
       setLoadingMore(false);
     }
@@ -231,7 +253,23 @@ export default function ExploreScreen() {
         </View>
       </View>
 
-      {searched && results.length === 0 ? (
+      {searching && results.length === 0 ? (
+        <View style={styles.center}>
+          <ActivityIndicator />
+          <Text style={styles.emptyText}>
+            Searching places...
+          </Text>
+        </View>
+      ) : searchError ? (
+        <RequestErrorState
+          error={searchError}
+          title="Search is unavailable"
+          fallbackMessage="Search is unavailable right now. Please try again."
+          onRetry={() => {
+            void runSearch(query);
+          }}
+        />
+      ) : searched && results.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.emptyText}>
             No places found.
@@ -356,7 +394,17 @@ export default function ExploreScreen() {
             </Pressable>
           )}
           ListFooterComponent={
-            !lastPage && results.length > 0 ? (
+            loadMoreError && results.length > 0 ? (
+              <RequestErrorState
+                error={loadMoreError}
+                title="Could not load more results"
+                fallbackMessage="More search results could not be loaded. Please try again."
+                retryLabel="Try again"
+                onRetry={() => {
+                  void loadMore();
+                }}
+              />
+            ) : !lastPage && results.length > 0 ? (
               <Pressable
                 style={styles.loadMoreButton}
                 onPress={loadMore}

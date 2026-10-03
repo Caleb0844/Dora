@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,9 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+import { ActionLoadingModal } from '@/components/action-loading-modal';
+import { RequestErrorState } from '@/components/request-error-state';
+import { getAppError } from '@/services/api/error-utils';
 import { getPlace, type PlaceDetails } from '@/services/api/place-service';
 import { useAuthIntentStore } from '@/store/auth-intent';
 import { useAuthPromptStore } from '@/store/auth-prompt';
@@ -123,8 +126,11 @@ export default function PlaceDetailsScreen() {
 
   const [place, setPlace] = useState<PlaceDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<unknown | null>(null);
   const [selectedImage, setSelectedImage] = useState(0);
   const [savingBookmark, setSavingBookmark] = useState(false);
+  const [bookmarkActionLabel, setBookmarkActionLabel] =
+    useState<string | null>(null);
   const [markingExplored, setMarkingExplored] = useState(false);
 
   const authStatus = useAuthSessionStore((state) => state.status);
@@ -143,32 +149,37 @@ export default function PlaceDetailsScreen() {
     ? bookmarks[placeId] ?? Boolean(place?.bookmarked)
     : false;
 
-  useEffect(() => {
+  const loadPlace = useCallback(async () => {
     if (!placeId) {
       return;
     }
 
-    async function loadPlace() {
-      try {
-        setLoading(true);
-        const data = await getPlace(placeId);
-        setPlace(data);
+    try {
+      setLoading(true);
+      setLoadError(null);
 
-        const currentExplored =
-          useExploredStore.getState().explored;
+      const data = await getPlace(placeId);
 
-        if (currentExplored[placeId] === undefined) {
-          setExplored(placeId, data.explored);
-        }
-      } catch (error) {
-        console.log('Failed to load place:', error);
-      } finally {
-        setLoading(false);
+      setPlace(data);
+
+      const currentExplored =
+        useExploredStore.getState().explored;
+
+      if (currentExplored[placeId] === undefined) {
+        setExplored(placeId, data.explored);
       }
+    } catch (error) {
+      console.log('Failed to load place:', error);
+      setPlace(null);
+      setLoadError(error);
+    } finally {
+      setLoading(false);
     }
-
-    loadPlace();
   }, [placeId, setExplored]);
+
+  useEffect(() => {
+    void loadPlace();
+  }, [loadPlace]);
 
   if (loading) {
     return (
@@ -178,10 +189,27 @@ export default function PlaceDetailsScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <View style={styles.screen}>
+        <RequestErrorState
+          error={loadError}
+          title="Could not load this place"
+          fallbackMessage="This place could not be loaded right now. Please try again."
+          onRetry={() => {
+            void loadPlace();
+          }}
+        />
+      </View>
+    );
+  }
+
   if (!place) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>Place could not be loaded.</Text>
+        <Text style={styles.errorText}>
+          Place could not be loaded.
+        </Text>
 
         <Pressable onPress={() => router.back()}>
           <Text style={styles.backText}>Go back</Text>
@@ -244,6 +272,11 @@ const url =
 
   return (
     <View style={styles.screen}>
+      <ActionLoadingModal
+        visible={savingBookmark}
+        label={bookmarkActionLabel ?? 'Saving...'}
+      />
+
       <Pressable
         style={styles.fixedBackButton}
         onPress={() => router.back()}
@@ -425,14 +458,48 @@ const url =
                 const shouldSave = !previousEffectiveValue;
 
                 setSavingBookmark(true);
+                setBookmarkActionLabel(
+                  shouldSave ? 'Adding...' : 'Removing...'
+                );
+
+                // Let React Native paint the blocking popup before
+                // starting the network request.
+                await new Promise<void>((resolve) => {
+                  requestAnimationFrame(() => resolve());
+                });
 
                 try {
                   if (shouldSave) {
                     await saveBookmark(placeId);
+
+                    Alert.alert(
+                      'Place saved',
+                      `${place.name} was added to your saved places.`
+                    );
                   } else {
                     await removeBookmark(placeId);
+
+                    Alert.alert(
+                      'Place removed',
+                      `${place.name} was removed from your saved places.`
+                    );
                   }
+                } catch (error) {
+                  const appError = getAppError(
+                    error,
+                    shouldSave
+                      ? 'Could not save this place. Please try again.'
+                      : 'Could not remove this place. Please try again.'
+                  );
+
+                  Alert.alert(
+                    shouldSave
+                      ? 'Could not save place'
+                      : 'Could not remove place',
+                    appError.message
+                  );
                 } finally {
+                  setBookmarkActionLabel(null);
                   setSavingBookmark(false);
                 }
               }}

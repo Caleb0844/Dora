@@ -13,6 +13,10 @@ public record RegisterRequest(
 
         @NotBlank(message = "Password is required")
         @Size(min = 8, max = 72, message = "Password must be between 8 and 72 characters")
+        @Pattern(
+                regexp = "^(?=.*\\d)(?=.*[^A-Za-z0-9]).+$",
+                message = "Password must include at least one number and one special character"
+        )
         String password,
 
         @NotBlank(message = "Password confirmation is required")

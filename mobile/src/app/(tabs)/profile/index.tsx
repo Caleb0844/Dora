@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { getAddedPlaces } from '@/features/profile/added-service';
 import { router } from 'expo-router';
 import {
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -19,7 +20,9 @@ import {
   View,
 } from 'react-native';
 
+import { ActionLoadingModal } from '@/components/action-loading-modal';
 import { AppHeader } from '@/components/app-header';
+import { RequestErrorState } from '@/components/request-error-state';
 import {
   ProfilePlaceTab,
   ProfilePlaceTabs,
@@ -35,6 +38,7 @@ import { getSavedPlaces } from '@/features/profile/saved-service';
 import { logout } from '@/features/auth/auth-service';
 import { resetAccountScopedState } from '@/features/auth/session-state';
 import { useBookmarkStore } from '@/store/bookmarks';
+import { getAppError } from '@/services/api/error-utils';
 import { deletePlace } from '@/services/api/place-service';
 import {
   deleteCloudinaryUploadByToken,
@@ -42,22 +46,62 @@ import {
 } from '@/services/api/cloudinary-service';
 import { theme } from '@/theme';
 
+const PROFILE_PAGE_SIZE = 9;
+
+function SavingDots() {
+  const [dotCount, setDotCount] = useState(1);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDotCount((current) =>
+        current >= 3 ? 1 : current + 1
+      );
+    }, 320);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, []);
+
+  return (
+    <Text style={styles.savingDots}>
+      {'.'.repeat(dotCount)}
+    </Text>
+  );
+}
+
 export default function ProfileScreen() {
   const [editVisible, setEditVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [reportVisible, setReportVisible] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [profileActionLabel, setProfileActionLabel] =
+    useState<string | null>(null);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editProfileImageUrl, setEditProfileImageUrl] = useState('');
   const [selectedProfileImageUri, setSelectedProfileImageUri] =
     useState<string | null>(null);
+  const [removeProfileImage, setRemoveProfileImage] = useState(false);
   const [activeTab, setActiveTab] = useState<ProfilePlaceTab>('saved');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortField, setSortField] = useState<'name' | 'date'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const queryClient = useQueryClient();
   const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [search]);
 
   const profileQuery = useQuery({
     queryKey: ['profile', 'me'],
@@ -65,23 +109,74 @@ export default function ProfileScreen() {
     staleTime: 5 * 60_000,
   });
 
-  const savedQuery = useQuery({
-    queryKey: ['profile', 'me', 'saved', 0, 8],
-    queryFn: () => getSavedPlaces(0, 8),
+  const savedQuery = useInfiniteQuery({
+    queryKey: [
+      'profile',
+      'me',
+      'saved',
+      debouncedSearch,
+      sortField,
+      sortDirection,
+    ],
+    queryFn: ({ pageParam }) =>
+      getSavedPlaces(
+        pageParam,
+        PROFILE_PAGE_SIZE,
+        debouncedSearch,
+        sortField,
+        sortDirection
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.last ? undefined : lastPage.page + 1,
     staleTime: 2 * 60_000,
     enabled: activeTab === 'saved',
   });
 
-  const addedQuery = useQuery({
-    queryKey: ['profile', 'me', 'added', 0, 8],
-    queryFn: () => getAddedPlaces(0, 8),
+  const addedQuery = useInfiniteQuery({
+    queryKey: [
+      'profile',
+      'me',
+      'added',
+      debouncedSearch,
+      sortField,
+      sortDirection,
+    ],
+    queryFn: ({ pageParam }) =>
+      getAddedPlaces(
+        pageParam,
+        PROFILE_PAGE_SIZE,
+        debouncedSearch,
+        sortField,
+        sortDirection
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.last ? undefined : lastPage.page + 1,
     staleTime: 2 * 60_000,
     enabled: activeTab === 'added',
   });
 
-  const visitedQuery = useQuery({
-    queryKey: ['profile', 'me', 'visited', 0, 8],
-    queryFn: () => getVisitedPlaces(0, 8),
+  const visitedQuery = useInfiniteQuery({
+    queryKey: [
+      'profile',
+      'me',
+      'visited',
+      debouncedSearch,
+      sortField,
+      sortDirection,
+    ],
+    queryFn: ({ pageParam }) =>
+      getVisitedPlaces(
+        pageParam,
+        PROFILE_PAGE_SIZE,
+        debouncedSearch,
+        sortField,
+        sortDirection
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.last ? undefined : lastPage.page + 1,
     staleTime: 2 * 60_000,
     enabled: activeTab === 'visited',
   });
@@ -89,27 +184,85 @@ export default function ProfileScreen() {
   const profile = profileQuery.data ?? null;
 
   const savedPlaces =
-    savedQuery.data?.content.map((bookmark) => ({
-      id: bookmark.place.id,
-      name: bookmark.place.name,
-      image: bookmark.place.thumbnailUrl ?? undefined,
-    })) ?? [];
+    savedQuery.data?.pages.flatMap((page) =>
+      page.content.map((bookmark) => ({
+        id: bookmark.place.id,
+        name: bookmark.place.name,
+        image: bookmark.place.thumbnailUrl ?? undefined,
+      }))
+    ) ?? [];
 
   const addedPlaces =
-    addedQuery.data?.content.map((place) => ({
-      id: place.id,
-      name: place.name,
-      image: place.thumbnailUrl ?? undefined,
-    })) ?? [];
+    addedQuery.data?.pages.flatMap((page) =>
+      page.content.map((place) => ({
+        id: place.id,
+        name: place.name,
+        image: place.thumbnailUrl ?? undefined,
+      }))
+    ) ?? [];
 
   const visitedPlaces =
-    visitedQuery.data?.content.map((item) => ({
-      id: item.place.id,
-      name: item.place.name,
-      image: item.place.images[0] ?? undefined,
-    })) ?? [];
+    visitedQuery.data?.pages.flatMap((page) =>
+      page.content.map((item) => ({
+        id: item.place.id,
+        name: item.place.name,
+        image: item.place.images[0] ?? undefined,
+      }))
+    ) ?? [];
 
   const loading = profileQuery.isPending;
+
+  const xp = profile?.points ?? 0;
+
+  const xpRanks = [
+    { name: 'Newbie', min: 0, max: 50 },
+    { name: 'Explorer', min: 50, max: 150 },
+    { name: 'Adventurer', min: 150, max: 300 },
+    { name: 'Pathfinder', min: 300, max: 500 },
+    { name: 'Trailblazer', min: 500, max: 700 },
+    { name: 'Elite', min: 700, max: 850 },
+    { name: 'Master', min: 850, max: 1000 },
+    { name: 'Legend', min: 1000, max: null },
+  ] as const;
+
+  const currentRankIndex =
+    xpRanks.findIndex(
+      (rank) =>
+        xp >= rank.min &&
+        (rank.max === null || xp < rank.max)
+    );
+
+  const currentRank =
+    xpRanks[currentRankIndex >= 0 ? currentRankIndex : 0];
+
+  const nextRank =
+    currentRankIndex >= 0 &&
+    currentRankIndex < xpRanks.length - 1
+      ? xpRanks[currentRankIndex + 1]
+      : null;
+
+  const rankProgress =
+    currentRank.max === null
+      ? 1
+      : Math.min(
+          1,
+          Math.max(
+            0,
+            (xp - currentRank.min) /
+              (currentRank.max - currentRank.min)
+          )
+        );
+
+  async function openContactLink(url: string) {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert(
+        'Could not open contact',
+        'Please try again or contact the organisation manually.'
+      );
+    }
+  }
 
   async function handleLogout() {
     if (loggingOut) {
@@ -145,7 +298,23 @@ export default function ProfileScreen() {
     setEditUsername(profile?.username ?? '');
     setEditProfileImageUrl(profile?.profileImage ?? '');
     setSelectedProfileImageUri(null);
+    setRemoveProfileImage(false);
     setEditVisible(true);
+  }
+
+  function handleCancelEditProfile() {
+    if (savingProfile) {
+      return;
+    }
+
+    setSelectedProfileImageUri(null);
+    setRemoveProfileImage(false);
+    setEditVisible(false);
+  }
+
+  function handleRemoveProfilePhoto() {
+    setSelectedProfileImageUri(null);
+    setRemoveProfileImage(true);
   }
 
   async function handleChooseProfilePhoto() {
@@ -169,6 +338,7 @@ export default function ProfileScreen() {
 
     if (!result.canceled) {
       setSelectedProfileImageUri(result.assets[0].uri);
+      setRemoveProfileImage(false);
     }
   }
 
@@ -192,6 +362,7 @@ export default function ProfileScreen() {
 
     if (!result.canceled) {
       setSelectedProfileImageUri(result.assets[0].uri);
+      setRemoveProfileImage(false);
     }
   }
 
@@ -201,7 +372,9 @@ export default function ProfileScreen() {
     try {
       setSavingProfile(true);
 
-      let profileImageUrl = editProfileImageUrl.trim();
+      let profileImageUrl = removeProfileImage
+        ? ''
+        : editProfileImageUrl.trim();
 
       if (selectedProfileImageUri) {
         const upload = await uploadImageToCloudinary(
@@ -224,6 +397,7 @@ export default function ProfileScreen() {
       );
 
       setSelectedProfileImageUri(null);
+      setRemoveProfileImage(false);
       setEditVisible(false);
     } catch (error: any) {
       if (uploadedDeleteToken) {
@@ -245,7 +419,236 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <AppHeader />
+      <ActionLoadingModal
+        visible={loggingOut}
+        label="Logging out..."
+      />
+      <ActionLoadingModal
+        visible={profileActionLabel !== null}
+        label={profileActionLabel ?? ''}
+      />
+
+      <AppHeader
+        rightAction={
+          <Pressable
+            style={styles.menuButton}
+            onPress={() => setMenuVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile menu"
+          >
+            <Ionicons
+              name="menu-outline"
+              size={27}
+              color={theme.colors.text}
+            />
+          </Pressable>
+        }
+      />
+
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <View style={styles.menuModal}>
+          <Pressable
+            style={styles.menuBackdrop}
+            onPress={() => setMenuVisible(false)}
+          />
+
+          <View style={styles.menuPanel}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Menu</Text>
+
+              <Pressable
+                style={styles.menuClose}
+                onPress={() => setMenuVisible(false)}
+                accessibilityLabel="Close menu"
+              >
+                <Ionicons
+                  name="close"
+                  size={24}
+                  color={theme.colors.text}
+                />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.menuContent}
+            >
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => setMenuVisible(false)}
+              >
+                <Ionicons
+                  name="person-outline"
+                  size={21}
+                  color={theme.colors.text}
+                />
+                <Text style={styles.menuItemText}>Profile</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuVisible(false);
+                  openEditProfile();
+                }}
+              >
+                <Ionicons
+                  name="create-outline"
+                  size={21}
+                  color={theme.colors.text}
+                />
+                <Text style={styles.menuItemText}>Edit Profile</Text>
+              </Pressable>
+
+              <View style={styles.menuDivider} />
+
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuVisible(false);
+
+                  requestAnimationFrame(() => {
+                    setReportVisible(true);
+                  });
+                }}
+              >
+                <Ionicons
+                  name="warning-outline"
+                  size={21}
+                  color={theme.colors.green}
+                />
+                <View style={styles.menuItemCopy}>
+                  <Text style={styles.menuItemText}>
+                    Report Environmental Incident
+                  </Text>
+                  <Text style={styles.menuItemHint}>
+                    Deforestation, poaching, pollution and more
+                  </Text>
+                </View>
+              </Pressable>
+
+              <View style={styles.menuDivider} />
+
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setActiveTab('saved');
+                  setMenuVisible(false);
+                }}
+              >
+                <Ionicons
+                  name="bookmark-outline"
+                  size={21}
+                  color={theme.colors.text}
+                />
+                <Text style={styles.menuItemText}>Saved Places</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setActiveTab('added');
+                  setMenuVisible(false);
+                }}
+              >
+                <Ionicons
+                  name="add-circle-outline"
+                  size={21}
+                  color={theme.colors.text}
+                />
+                <Text style={styles.menuItemText}>My Contributions</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setActiveTab('visited');
+                  setMenuVisible(false);
+                }}
+              >
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={21}
+                  color={theme.colors.text}
+                />
+                <Text style={styles.menuItemText}>Visited Places</Text>
+              </Pressable>
+
+              <View style={styles.menuDivider} />
+
+              {[
+                ['settings-outline', 'Settings'],
+                ['help-circle-outline', 'Help & Support'],
+                ['shield-checkmark-outline', 'Privacy & Safety'],
+                ['information-circle-outline', 'About Twende'],
+              ].map(([icon, label]) => (
+                <Pressable
+                  key={label}
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setMenuVisible(false);
+                    Alert.alert(label, 'This section will be added later.');
+                  }}
+                >
+                  <Ionicons
+                    name={icon as any}
+                    size={21}
+                    color={theme.colors.text}
+                  />
+                  <Text style={styles.menuItemText}>{label}</Text>
+                </Pressable>
+              ))}
+
+              <View style={styles.menuDivider} />
+
+              <Pressable
+                style={styles.menuItem}
+                disabled={loggingOut}
+                onPress={() => {
+                  setMenuVisible(false);
+
+                  Alert.alert(
+                    'Log out',
+                    'Are you sure you want to log out?',
+                    [
+                      {
+                        text: 'No',
+                        style: 'cancel',
+                      },
+                      {
+                        text: 'Yes',
+                        style: 'destructive',
+                        onPress: () => {
+                          void handleLogout();
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Ionicons
+                  name="log-out-outline"
+                  size={21}
+                  color={theme.colors.danger}
+                />
+                <Text
+                  style={[
+                    styles.menuItemText,
+                    styles.menuLogoutText,
+                  ]}
+                >
+                  {loggingOut ? 'Logging out...' : 'Logout'}
+                </Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {loading ? (
         <ScrollView
@@ -296,6 +699,15 @@ export default function ProfileScreen() {
             </View>
           </View>
         </ScrollView>
+      ) : profileQuery.error ? (
+        <RequestErrorState
+          error={profileQuery.error}
+          title="Could not load your profile"
+          fallbackMessage="Your profile could not be loaded right now. Please try again."
+          onRetry={() => {
+            void profileQuery.refetch();
+          }}
+        />
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.profileTop}>
@@ -324,67 +736,103 @@ export default function ProfileScreen() {
               </Text>
 
               {profile?.email && (
-                <Text style={styles.email}>{profile.email}</Text>
-              )}
-            </View>
-
-            <View style={styles.profileActions}>
-                <Pressable
-                  style={styles.editButton}
-                  onPress={openEditProfile}
-                  accessibilityLabel="Edit profile"
+                <Text
+                  style={styles.email}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
                 >
-                  <Ionicons
-                    name="create-outline"
-                    size={18}
-                    color={theme.colors.text}
-                  />
-                </Pressable>
+                  {profile.email}
+                </Text>
+              )}
 
-                <Pressable style={styles.logoutButton} onPress={handleLogout}
-          disabled={loggingOut}>
-                  <Ionicons
-                    name="log-out-outline"
-                    size={18}
-                    color={theme.colors.danger}
-                  />
-                </Pressable>
+              <Pressable
+                style={styles.editProfileButton}
+                onPress={openEditProfile}
+                accessibilityRole="button"
+                accessibilityLabel="Edit profile"
+              >
+                <Ionicons
+                  name="create-outline"
+                  size={15}
+                  color={theme.colors.text}
+                />
+                <Text style={styles.editProfileText}>
+                  Edit Profile
+                </Text>
+              </Pressable>
             </View>
           </View>
 
-          <View style={styles.pointsCard}>
-            <View>
-              <Text style={styles.pointsLabel}>XP</Text>
-              <Text style={styles.pointsValue}>
-                {profile?.points ?? 0}
-              </Text>
+          <View style={styles.rankSection}>
+            <View style={styles.rankTopRow}>
+              <View>
+                <Text style={styles.rankEyebrow}>RANK</Text>
+                <Text style={styles.rankName}>
+                  {currentRank.name}
+                </Text>
+              </View>
+
+              <View style={styles.rankXp}>
+                <Ionicons
+                  name="flash"
+                  size={18}
+                  color={theme.colors.accent}
+                />
+                <Text style={styles.rankXpValue}>
+                  {xp} XP
+                </Text>
+              </View>
             </View>
 
-            <Ionicons
-              name="flash-outline"
-              size={32}
-              color={theme.colors.accent}
-            />
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${rankProgress * 100}%`,
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={styles.rankFooter}>
+              <Text style={styles.rankHint}>
+                Earn XP by exploring and contributing places.
+              </Text>
+
+              {nextRank ? (
+                <Text style={styles.nextRank}>
+                  Next: {nextRank.name} · {nextRank.min} XP
+                </Text>
+              ) : (
+                <Text style={styles.nextRank}>
+                  Highest rank reached
+                </Text>
+              )}
+            </View>
           </View>
 
           <ProfilePlaceTabs
             activeTab={activeTab}
             onChange={setActiveTab}
+            fullBleed
           />
 
           <View style={styles.tabContent}>
             {activeTab === 'saved' && (
               <>
-                <ProfileGridToolbar
-                  search={search}
-                  onSearchChange={setSearch}
-                  sortField={sortField}
-                  sortDirection={sortDirection}
-                  onSortChange={(field, direction) => {
-                    setSortField(field);
-                    setSortDirection(direction);
-                  }}
-                />
+                <View style={styles.toolbarInset}>
+                  <ProfileGridToolbar
+                    search={search}
+                    onSearchChange={setSearch}
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                    onSortChange={(field, direction) => {
+                      setSortField(field);
+                      setSortDirection(direction);
+                    }}
+                  />
+                </View>
 
                 {savedQuery.isPending ? (
                   <View style={styles.emptyState}>
@@ -392,69 +840,77 @@ export default function ProfileScreen() {
                   </View>
                 ) : savedPlaces.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Text style={styles.emptyTitle}>No saved places yet</Text>
+                    <Text style={styles.emptyTitle}>
+                      No saved places yet
+                    </Text>
                   </View>
                 ) : (
-                  <>
-                    <ProfilePlaceGrid
-                      places={savedPlaces}
-                      onPressPlace={(place) =>
-                        router.push({
-                          pathname: '/place/[id]',
-                          params: { id: place.id },
-                        })
+                  <ProfilePlaceGrid
+                    ownProfileLayout
+                    places={savedPlaces}
+                    showMore={savedQuery.hasNextPage}
+                    loadingMore={savedQuery.isFetchingNextPage}
+                    onMore={() => {
+                      void savedQuery.fetchNextPage();
+                    }}
+                    onPressPlace={(place) =>
+                      router.push({
+                        pathname: '/place/[id]',
+                        params: { id: place.id },
+                      })
+                    }
+                    actionLabel="Remove"
+                    onPrimaryAction={async (place) => {
+                      if (profileActionLabel) {
+                        return;
                       }
-                      actionLabel="Remove"
-                      onPrimaryAction={async (place) => {
+
+                      try {
+                        setProfileActionLabel('Removing...');
+
                         await removeBookmark(place.id);
 
-                        queryClient.setQueryData(
-                          ['profile', 'me', 'saved', 0, 8],
-                          (
-                            current:
-                              | Awaited<ReturnType<typeof getSavedPlaces>>
-                              | undefined
-                          ) => {
-                            if (!current) {
-                              return current;
-                            }
+                        await queryClient.invalidateQueries({
+                          queryKey: ['profile', 'me', 'saved'],
+                        });
 
-                            return {
-                              ...current,
-                              content: current.content.filter(
-                                (savedPlace) =>
-                                  savedPlace.place.id !== place.id
-                              ),
-                              totalElements: Math.max(
-                                0,
-                                current.totalElements - 1
-                              ),
-                            };
-                          }
+                        Alert.alert(
+                          'Removed',
+                          `${place.name} was removed from your saved places.`
                         );
-                      }}
-                    />
+                      } catch (error) {
+                        const appError = getAppError(
+                          error,
+                          'Could not remove this place. Please try again.'
+                        );
 
-                    <Pressable style={styles.seeMoreButton}>
-                      <Text style={styles.seeMoreText}>See more</Text>
-                    </Pressable>
-                  </>
+                        Alert.alert(
+                          'Could not remove place',
+                          appError.message
+                        );
+                      } finally {
+                        setProfileActionLabel(null);
+                      }
+                    }}
+                  />
                 )}
               </>
             )}
 
             {activeTab === 'added' && (
               <>
-                <ProfileGridToolbar
-                  search={search}
-                  onSearchChange={setSearch}
-                  sortField={sortField}
-                  sortDirection={sortDirection}
-                  onSortChange={(field, direction) => {
-                    setSortField(field);
-                    setSortDirection(direction);
-                  }}
-                />
+                <View style={styles.toolbarInset}>
+                  <ProfileGridToolbar
+                    search={search}
+                    onSearchChange={setSearch}
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                    onSortChange={(field, direction) => {
+                      setSortField(field);
+                      setSortDirection(direction);
+                    }}
+                  />
+                </View>
 
                 {addedQuery.isPending ? (
                   <View style={styles.emptyState}>
@@ -462,9 +918,14 @@ export default function ProfileScreen() {
                   </View>
                 ) : addedPlaces.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Text style={styles.emptyTitle}>No places added</Text>
+                    <Text style={styles.emptyTitle}>
+                      No places added
+                    </Text>
 
-                    <Pressable style={styles.emptyAction}>
+                    <Pressable
+                      style={styles.emptyAction}
+                      onPress={() => router.push('/add')}
+                    >
                       <Ionicons
                         name="add"
                         size={24}
@@ -474,7 +935,13 @@ export default function ProfileScreen() {
                   </View>
                 ) : (
                   <ProfilePlaceGrid
+                    ownProfileLayout
                     places={addedPlaces}
+                    showMore={addedQuery.hasNextPage}
+                    loadingMore={addedQuery.isFetchingNextPage}
+                    onMore={() => {
+                      void addedQuery.fetchNextPage();
+                    }}
                     onPressPlace={(place) =>
                       router.push({
                         pathname: '/place/[id]',
@@ -490,47 +957,55 @@ export default function ProfileScreen() {
                       });
                     }}
                     onSecondaryAction={(place) => {
+                      if (profileActionLabel) {
+                        return;
+                      }
+
                       Alert.alert(
                         'Delete place',
-                        `Delete "${place.name}"?`,
+                        `Are you sure you want to delete "${place.name}"?\n\nThis action cannot be undone.`,
                         [
-                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Cancel',
+                            style: 'cancel',
+                          },
                           {
                             text: 'Delete',
                             style: 'destructive',
                             onPress: async () => {
+                              if (profileActionLabel) {
+                                return;
+                              }
+
                               try {
+                                setProfileActionLabel('Deleting...');
+
                                 await deletePlace(place.id);
 
-                                queryClient.setQueryData(
-                                  ['profile', 'me', 'added', 0, 8],
-                                  (
-                                    current:
-                                      | Awaited<ReturnType<typeof getAddedPlaces>>
-                                      | undefined
-                                  ) => {
-                                    if (!current) {
-                                      return current;
-                                    }
+                                await queryClient.invalidateQueries({
+                                  queryKey: [
+                                    'profile',
+                                    'me',
+                                    'added',
+                                  ],
+                                });
 
-                                    return {
-                                      ...current,
-                                      content: current.content.filter(
-                                        (item) => item.id !== place.id
-                                      ),
-                                      totalElements: Math.max(
-                                        0,
-                                        current.totalElements - 1
-                                      ),
-                                    };
-                                  }
-                                );
-                              } catch (error: any) {
                                 Alert.alert(
-                                  'Delete failed',
-                                  error?.response?.data?.message ??
-                                    'Could not delete this place.'
+                                  'Place deleted',
+                                  `${place.name} was deleted successfully.`
                                 );
+                              } catch (error) {
+                                const appError = getAppError(
+                                  error,
+                                  'Could not delete this place. Please try again.'
+                                );
+
+                                Alert.alert(
+                                  'Could not delete place',
+                                  appError.message
+                                );
+                              } finally {
+                                setProfileActionLabel(null);
                               }
                             },
                           },
@@ -541,20 +1016,21 @@ export default function ProfileScreen() {
                 )}
               </>
             )}
-            
 
             {activeTab === 'visited' && (
               <>
-                <ProfileGridToolbar
-                  search={search}
-                  onSearchChange={setSearch}
-                  sortField={sortField}
-                  sortDirection={sortDirection}
-                  onSortChange={(field, direction) => {
-                    setSortField(field);
-                    setSortDirection(direction);
-                  }}
-                />
+                <View style={styles.toolbarInset}>
+                  <ProfileGridToolbar
+                    search={search}
+                    onSearchChange={setSearch}
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                    onSortChange={(field, direction) => {
+                      setSortField(field);
+                      setSortDirection(direction);
+                    }}
+                  />
+                </View>
 
                 {visitedQuery.isPending ? (
                   <View style={styles.emptyState}>
@@ -562,16 +1038,50 @@ export default function ProfileScreen() {
                   </View>
                 ) : visitedPlaces.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Text style={styles.emptyTitle}>No places explored yet</Text>
+                    <Text style={styles.emptyTitle}>
+                      No places explored yet
+                    </Text>
 
-                    <Pressable style={styles.exploreButton}>
-                      <Text style={styles.exploreButtonText}>Explore</Text>
+                    <Pressable
+                      style={styles.exploreButton}
+                      onPress={() => router.push('/explore')}
+                    >
+                      <Text style={styles.exploreButtonText}>
+                        Explore
+                      </Text>
                     </Pressable>
                   </View>
                 ) : (
-                  <ProfilePlaceGrid places={visitedPlaces} />
+                  <ProfilePlaceGrid
+                    ownProfileLayout
+                    places={visitedPlaces}
+                    showMore={visitedQuery.hasNextPage}
+                    loadingMore={visitedQuery.isFetchingNextPage}
+                    onMore={() => {
+                      void visitedQuery.fetchNextPage();
+                    }}
+                    onPressPlace={(place) =>
+                      router.push({
+                        pathname: '/place/[id]',
+                        params: { id: place.id },
+                      })
+                    }
+                  />
                 )}
               </>
+            )}
+
+            {activeTab === 'list' && (
+              <View style={styles.listComingSoon}>
+                <Ionicons
+                  name="list-outline"
+                  size={28}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={styles.listComingSoonText}>
+                  Coming soon
+                </Text>
+              </View>
             )}
           </View>
         </ScrollView>
@@ -579,10 +1089,222 @@ export default function ProfileScreen() {
 
 
       <Modal
+        visible={reportVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReportVisible(false)}
+      >
+        <View style={styles.reportBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setReportVisible(false)}
+          />
+
+          <View style={styles.reportModal}>
+            <View style={styles.reportHeader}>
+              <View style={styles.reportHeaderCopy}>
+                <Text style={styles.reportTitle}>
+                  Report Environmental Incident
+                </Text>
+
+                <Text style={styles.reportSubtitle}>
+                  Kenya environmental and wildlife reporting contacts
+                </Text>
+              </View>
+
+              <Pressable
+                style={styles.reportClose}
+                onPress={() => setReportVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close environmental incident report"
+              >
+                <Ionicons
+                  name="close"
+                  size={25}
+                  color={theme.colors.text}
+                />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.reportContent}
+            >
+              <View style={styles.reportSection}>
+                <View style={styles.reportSectionHeading}>
+                  <Ionicons
+                    name="leaf-outline"
+                    size={21}
+                    color={theme.colors.green}
+                  />
+
+                  <Text style={styles.reportSectionTitle}>
+                    NEMA
+                  </Text>
+                </View>
+
+                <Text style={styles.reportBody}>
+                  For environmental incidents such as pollution,
+                  illegal dumping, wildfire, deforestation and other
+                  environmental threats, contact the National
+                  Environment Management Authority.
+                </Text>
+
+                <Pressable
+                  style={styles.reportContactRow}
+                  onPress={() =>
+                    void openContactLink('tel:0741101100')
+                  }
+                >
+                  <Ionicons
+                    name="call-outline"
+                    size={18}
+                    color={theme.colors.accent}
+                  />
+
+                  <Text style={styles.reportContactText}>
+                    0741 101 100
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.reportContactRow}
+                  onPress={() =>
+                    void openContactLink('tel:0786101100')
+                  }
+                >
+                  <Ionicons
+                    name="call-outline"
+                    size={18}
+                    color={theme.colors.accent}
+                  />
+
+                  <Text style={styles.reportContactText}>
+                    0786 101 100
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.reportContactRow}
+                  onPress={() =>
+                    void openContactLink(
+                      'mailto:incidence@nema.go.ke'
+                    )
+                  }
+                >
+                  <Ionicons
+                    name="mail-outline"
+                    size={18}
+                    color={theme.colors.accent}
+                  />
+
+                  <Text style={styles.reportContactText}>
+                    incidence@nema.go.ke
+                  </Text>
+                </Pressable>
+
+                <Text style={styles.reportNote}>
+                  The Incident Desk is staffed by the Compliance and
+                  Enforcement Team from 8 am to 5 pm on normal working
+                  days. An automated answering service is available
+                  outside those hours.
+                </Text>
+              </View>
+
+              <View style={styles.reportDivider} />
+
+              <View style={styles.reportSection}>
+                <View style={styles.reportSectionHeading}>
+                  <Ionicons
+                    name="paw-outline"
+                    size={21}
+                    color={theme.colors.green}
+                  />
+
+                  <Text style={styles.reportSectionTitle}>
+                    Kenya Wildlife Service
+                  </Text>
+                </View>
+
+                <Text style={styles.reportBody}>
+                  For poaching or wildlife crime incidents, contact
+                  Kenya Wildlife Service directly.
+                </Text>
+
+                <Pressable
+                  style={styles.reportContactRow}
+                  onPress={() =>
+                    void openContactLink('tel:0700709000')
+                  }
+                >
+                  <Ionicons
+                    name="call-outline"
+                    size={18}
+                    color={theme.colors.accent}
+                  />
+
+                  <View>
+                    <Text style={styles.reportContactLabel}>
+                      National Emergency Line
+                    </Text>
+
+                    <Text style={styles.reportContactText}>
+                      0700 709 000
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  style={styles.reportContactRow}
+                  onPress={() =>
+                    void openContactLink('tel:0733709000')
+                  }
+                >
+                  <Ionicons
+                    name="call-outline"
+                    size={18}
+                    color={theme.colors.accent}
+                  />
+
+                  <View>
+                    <Text style={styles.reportContactLabel}>
+                      KWS Hotline
+                    </Text>
+
+                    <Text style={styles.reportContactText}>
+                      0733 709 000
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <Text style={styles.reportNote}>
+                  You may also report a poaching or wildlife crime
+                  incident to the nearest police station.
+                </Text>
+              </View>
+
+              <View style={styles.reportEmergencyNote}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={19}
+                  color={theme.colors.textSecondary}
+                />
+
+                <Text style={styles.reportEmergencyText}>
+                  If there is immediate danger to people, contact the
+                  appropriate emergency services first.
+                </Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={editVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setEditVisible(false)}
+        onRequestClose={handleCancelEditProfile}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -608,7 +1330,15 @@ export default function ProfileScreen() {
               style={styles.modalInput}
             />
             <View style={styles.profileImageEditor}>
-              {selectedProfileImageUri || editProfileImageUrl ? (
+              {removeProfileImage ? (
+                <View style={styles.editProfileImageFallback}>
+                  <Ionicons
+                    name="person"
+                    size={26}
+                    color={theme.colors.textSecondary}
+                  />
+                </View>
+              ) : selectedProfileImageUri || editProfileImageUrl ? (
                 <Image
                   source={{
                     uri:
@@ -621,7 +1351,7 @@ export default function ProfileScreen() {
                 <View style={styles.editProfileImageFallback}>
                   <Ionicons
                     name="person"
-                    size={34}
+                    size={26}
                     color={theme.colors.textSecondary}
                   />
                 </View>
@@ -635,7 +1365,7 @@ export default function ProfileScreen() {
                 >
                   <Ionicons
                     name="images-outline"
-                    size={18}
+                    size={17}
                     color={theme.colors.text}
                   />
                   <Text style={styles.profileImageButtonText}>
@@ -650,34 +1380,74 @@ export default function ProfileScreen() {
                 >
                   <Ionicons
                     name="camera-outline"
-                    size={18}
+                    size={17}
                     color={theme.colors.text}
                   />
                   <Text style={styles.profileImageButtonText}>
                     Take photo
                   </Text>
                 </Pressable>
+
+                {(selectedProfileImageUri ||
+                  (!removeProfileImage && editProfileImageUrl)) && (
+                  <Pressable
+                    style={styles.profileImageButton}
+                    onPress={handleRemoveProfilePhoto}
+                    disabled={savingProfile}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={17}
+                      color={theme.colors.danger}
+                    />
+                    <Text style={styles.removePhotoText}>
+                      Remove photo
+                    </Text>
+                  </Pressable>
+                )}
               </View>
             </View>
 
             <View style={styles.modalActions}>
               <Pressable
                 style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setEditVisible(false)}
+                onPress={handleCancelEditProfile}
                 disabled={savingProfile}
               >
-                <Text style={styles.modalButtonText}>Cancel</Text>
+                <Text style={styles.modalButtonText}>
+                  Cancel
+                </Text>
               </Pressable>
+
               <Pressable
                 style={[styles.modalButton, styles.saveButton]}
                 onPress={handleSaveProfile}
                 disabled={savingProfile}
               >
                 <Text style={styles.saveButtonText}>
-                  {savingProfile ? 'Saving...' : 'Save'}
+                  Save
                 </Text>
               </Pressable>
             </View>
+
+            {savingProfile && (
+              <View style={styles.savingOverlay}>
+                <View style={styles.savingPopup}>
+                  <ActivityIndicator
+                    size="small"
+                    color={theme.colors.accent}
+                  />
+
+                  <View style={styles.savingCopy}>
+                    <Text style={styles.savingText}>
+                      Saving photo
+                    </Text>
+
+                    <SavingDots />
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -784,14 +1554,91 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: theme.colors.surfaceSoft,
   },
-  profileTop: {
+  menuButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuModal: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+  },
+  menuPanel: {
+    width: '82%',
+    maxWidth: 340,
+    height: '100%',
+    paddingTop: 48,
+    backgroundColor: theme.colors.background,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: theme.colors.border,
+  },
+  menuHeader: {
+    minHeight: 52,
+    paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 18,
-    padding: 16,
+    justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+  },
+  menuTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+  menuClose: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuContent: {
+    paddingVertical: 10,
+    paddingBottom: 28,
+  },
+  menuItem: {
+    minHeight: 48,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  menuItemCopy: {
+    flex: 1,
+  },
+  menuItemText: {
+    flexShrink: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  menuItemHint: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
+    color: theme.colors.textSecondary,
+  },
+  menuDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 6,
+    marginHorizontal: 18,
+    backgroundColor: theme.colors.border,
+  },
+  menuLogoutText: {
+    color: theme.colors.danger,
+  },
+  profileTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 2,
+    paddingVertical: 8,
   },
   avatar: {
     width: 76,
@@ -826,51 +1673,99 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.textSecondary,
   },
-   editButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.surfaceSoft,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
   profileActions: {
     flexDirection: 'row',
     gap: 8,
   },
-  logoutButton: {
-    width: 38,
-    height: 38,
+  editProfileButton: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    minHeight: 34,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 19,
+    gap: 6,
+    borderRadius: 17,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSoft,
   },
+  editProfileText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
   pointsCard: {
     marginTop: 16,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
+    minHeight: 78,
+    paddingHorizontal: 2,
+    paddingVertical: 14,
+  },
+  rankSection: {
+    marginTop: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
-    borderRadius: 18,
-    padding: 18,
+  },
+  rankTopRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
-  pointsLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+  rankEyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.4,
     color: theme.colors.textSecondary,
   },
-  pointsValue: {
-    marginTop: 4,
-    fontSize: 32,
+  rankName: {
+    marginTop: 2,
+    fontSize: 22,
     fontWeight: '800',
     color: theme.colors.text,
+  },
+  rankXp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  rankXpValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+  progressTrack: {
+    marginTop: 13,
+    height: 8,
+    overflow: 'hidden',
+    borderRadius: 4,
+    backgroundColor: theme.colors.surfaceSoft,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: theme.colors.accent,
+  },
+  rankFooter: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  rankHint: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 15,
+    color: theme.colors.textSecondary,
+  },
+  nextRank: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.colors.green,
   },
   emptyState: {
     minHeight: 180,
@@ -919,13 +1814,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tabContent: {
-    marginTop: 16,
     minHeight: 150,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 16,
-    padding: 16,
+    marginHorizontal: -16,
+  },
+  toolbarInset: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+  listComingSoon: {
+    minHeight: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  listComingSoonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
   },
   tabTitle: {
     fontSize: 18,
@@ -996,63 +1902,180 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 12,
   },
+  reportBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.42)',
+  },
+  reportModal: {
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: '82%',
+    backgroundColor: theme.colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingLeft: 18,
+    paddingRight: 10,
+    paddingTop: 16,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+  },
+  reportHeaderCopy: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  reportTitle: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  reportSubtitle: {
+    marginTop: 4,
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  reportClose: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportContent: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 22,
+  },
+  reportSection: {
+    gap: 12,
+  },
+  reportSectionHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reportSectionTitle: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  reportBody: {
+    color: theme.colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  reportContactRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+  },
+  reportContactLabel: {
+    marginBottom: 2,
+    color: theme.colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  reportContactText: {
+    color: theme.colors.accent,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  reportNote: {
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  reportDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 20,
+    backgroundColor: theme.colors.border,
+  },
+  reportEmergencyNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 22,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border,
+  },
+  reportEmergencyText: {
+    flex: 1,
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
   profileImageEditor: {
     marginBottom: 14,
     alignItems: 'center',
   },
   editProfileImage: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    marginBottom: 12,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    marginBottom: 14,
   },
   editProfileImageFallback: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    marginBottom: 12,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    marginBottom: 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: theme.colors.surfaceSoft,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
   },
   profileImageActions: {
-    flexDirection: 'row',
-    gap: 10,
+    width: '100%',
   },
   profileImageButton: {
+    minHeight: 42,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: theme.colors.surfaceSoft,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    gap: 9,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
   },
   profileImageButtonText: {
     color: theme.colors.text,
     fontSize: 13,
     fontWeight: '700',
   },
+  removePhotoText: {
+    color: theme.colors.danger,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 4,
+    gap: 12,
+    marginTop: 10,
   },
   modalButton: {
-    minWidth: 88,
+    minWidth: 76,
     alignItems: 'center',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
+    borderRadius: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   cancelButton: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
   saveButton: {
     backgroundColor: theme.colors.accent,
@@ -1064,5 +2087,38 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: theme.colors.white,
     fontWeight: '700',
+  },
+  savingOverlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.22)',
+  },
+  savingPopup: {
+    minWidth: 150,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    backgroundColor: theme.colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+  },
+  savingCopy: {
+    minWidth: 92,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  savingText: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  savingDots: {
+    width: 24,
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

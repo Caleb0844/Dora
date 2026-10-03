@@ -1,6 +1,6 @@
 module.exports = {
   expo: {
-    name: 'mobile',
+    name: 'Twende',
     slug: 'mobile',
     version: '1.0.0',
     orientation: 'portrait',
@@ -42,8 +42,6 @@ module.exports = {
         'expo-splash-screen',
         {
           backgroundColor: '#208AEF',
-          image: './assets/images/splash-icon.png',
-          imageWidth: 76,
         },
       ],
       'expo-secure-store',

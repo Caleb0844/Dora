@@ -28,12 +28,18 @@ export type SavedPlacesPage = {
 
 export async function getSavedPlaces(
   page = 0,
-  size = 8
+  size = 8,
+  search = '',
+  sortField: 'name' | 'date' = 'date',
+  sortDirection: 'asc' | 'desc' = 'desc'
 ): Promise<SavedPlacesPage> {
   const response = await api.get('/api/bookmarks', {
     params: {
       page,
       size,
+      q: search,
+      sortField,
+      sortDirection,
     },
   });
 

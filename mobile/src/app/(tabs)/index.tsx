@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 
 import { PlaceMetaSwitch } from '@/components/place-meta-switch';
+import { RequestErrorState } from '@/components/request-error-state';
 import { FeedPost, getFeed } from '@/services/api/feed-service';
 import { useAuthIntentStore } from '@/store/auth-intent';
 import { useAuthPromptStore } from '@/store/auth-prompt';
@@ -212,6 +213,7 @@ export default function HomeScreen() {
     hasNextPage,
     isFetchingNextPage,
     isRefetching,
+    refetch,
   } = useInfiniteQuery({
     queryKey: ['feed', 'home', 'infinite'],
     queryFn: ({ pageParam }) => getFeed(pageParam.page, 10),
@@ -383,11 +385,14 @@ export default function HomeScreen() {
               </Text>
             </View>
           ) : feedError ? (
-            <View style={styles.feedLoading}>
-              <Text style={styles.feedLoadingText}>
-                Could not load places.
-              </Text>
-            </View>
+            <RequestErrorState
+              error={feedError}
+              title="Could not load places"
+              fallbackMessage="We could not load places right now. Please try again."
+              onRetry={() => {
+                void refetch();
+              }}
+            />
           ) : null
         }
         contentContainerStyle={styles.feed}

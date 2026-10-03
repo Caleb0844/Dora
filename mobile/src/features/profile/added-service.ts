@@ -24,10 +24,19 @@ export type AddedPlacesPage = {
 
 export async function getAddedPlaces(
   page = 0,
-  size = 20
+  size = 20,
+  search = '',
+  sortField: 'name' | 'date' = 'date',
+  sortDirection: 'asc' | 'desc' = 'desc'
 ): Promise<AddedPlacesPage> {
   const response = await api.get('/api/users/me/places', {
-    params: { page, size },
+    params: {
+      page,
+      size,
+      q: search,
+      sortField,
+      sortDirection,
+    },
   });
 
   return response.data.data;

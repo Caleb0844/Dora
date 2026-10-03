@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
+import { AuthLoadingModal } from '@/components/auth-loading-modal';
 import { resumeAfterAuth } from '@/features/auth/resume-after-auth';
 import { useAuthIntentStore } from '@/store/auth-intent';
 
@@ -17,6 +18,7 @@ import {
   login,
   startGoogleLogin,
 } from '@/features/auth/auth-service';
+import { getAppError } from '@/services/api/error-utils';
 import { theme } from '@/theme';
 
 export default function LoginScreen() {
@@ -28,6 +30,7 @@ export default function LoginScreen() {
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
@@ -41,12 +44,28 @@ export default function LoginScreen() {
       });
 
       await resumeAfterAuth();
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message ??
-        'Could not sign in.';
+    } catch (error) {
+      const appError = getAppError(
+        error,
+        'Wrong username or password.'
+      );
 
-      Alert.alert('Login failed', message);
+      const shouldReturnHome =
+        appError.kind === 'network' ||
+        appError.kind === 'timeout' ||
+        appError.kind === 'server';
+
+      Alert.alert(
+        'Sign in failed',
+        shouldReturnHome
+          ? appError.message
+          : 'Wrong username or password.'
+      );
+
+      if (shouldReturnHome) {
+        clearIntent();
+        router.replace('/');
+      }
     } finally {
       setLoading(false);
     }
@@ -68,11 +87,25 @@ export default function LoginScreen() {
           'Google sign-in could not be completed.'
         );
       }
-    } catch (error: any) {
+    } catch (error) {
+      const appError = getAppError(
+        error,
+        'Could not start Google sign-in.'
+      );
+
       Alert.alert(
         'Google sign-in failed',
-        error?.message ?? 'Could not start Google sign-in.'
+        appError.message
       );
+
+      if (
+        appError.kind === 'network' ||
+        appError.kind === 'timeout' ||
+        appError.kind === 'server'
+      ) {
+        clearIntent();
+        router.replace('/');
+      }
     } finally {
       setGoogleLoading(false);
     }
@@ -111,26 +144,44 @@ export default function LoginScreen() {
         placeholder="Email or username"
         placeholderTextColor={theme.colors.textSecondary}
         autoCapitalize="none"
+        maxLength={254}
         style={styles.input}
       />
 
-      <TextInput
-        value={password}
-        onChangeText={setPassword}
-        placeholder="Password"
-        placeholderTextColor={theme.colors.textSecondary}
-        secureTextEntry
-        style={styles.input}
-      />
+      <View style={styles.passwordField}>
+        <TextInput
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Password"
+          placeholderTextColor={theme.colors.textSecondary}
+          secureTextEntry={!showPassword}
+          autoCapitalize="none"
+          maxLength={72}
+          style={styles.passwordInput}
+        />
+
+        <Pressable
+          style={styles.passwordEye}
+          onPress={() => setShowPassword((current) => !current)}
+          accessibilityRole="button"
+          accessibilityLabel={
+            showPassword ? 'Hide password' : 'Show password'
+          }
+        >
+          <Ionicons
+            name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+            size={21}
+            color={theme.colors.textSecondary}
+          />
+        </Pressable>
+      </View>
 
       <Pressable
         style={styles.button}
         onPress={handleLogin}
         disabled={loading || googleLoading}
       >
-        <Text style={styles.buttonText}>
-          {loading ? 'Signing in...' : 'Sign in'}
-        </Text>
+        <Text style={styles.buttonText}>Sign in</Text>
       </Pressable>
 
       <Text style={styles.orText}>or</Text>
@@ -141,9 +192,7 @@ export default function LoginScreen() {
         disabled={loading || googleLoading}
       >
         <Text style={styles.googleButtonText}>
-          {googleLoading
-            ? 'Opening Google...'
-            : 'Continue with Google'}
+          Continue with Google
         </Text>
       </Pressable>
 
@@ -156,6 +205,11 @@ export default function LoginScreen() {
           <Text style={styles.signupLink}>Create account</Text>
         </Pressable>
       </View>
+
+      <AuthLoadingModal
+        visible={loading || googleLoading}
+        label="Signing in"
+      />
     </View>
   );
 }
@@ -176,23 +230,46 @@ const styles = StyleSheet.create({
   },
   title: {
     color: theme.colors.text,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '800',
-    marginBottom: 24,
+    marginBottom: 22,
   },
   input: {
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
     color: theme.colors.text,
-    borderRadius: 12,
+    borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 14,
     marginBottom: 14,
   },
+  passwordField: {
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 8,
+  },
+  passwordInput: {
+    flex: 1,
+    color: theme.colors.text,
+    paddingLeft: 14,
+    paddingRight: 8,
+    paddingVertical: 14,
+  },
+  passwordEye: {
+    width: 46,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   button: {
     backgroundColor: theme.colors.accent,
-    borderRadius: 12,
+    borderRadius: 0,
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 6,
@@ -208,15 +285,20 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
   },
   googleButton: {
-    backgroundColor: theme.colors.surface,
+    minHeight: 50,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
+    borderRadius: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
   googleButtonText: {
-    color: theme.colors.text,
+    color: '#000000',
     fontWeight: '700',
     fontSize: 16,
   },

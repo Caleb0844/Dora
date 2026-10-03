@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 
+import { ActionLoadingModal } from '@/components/action-loading-modal';
 import {
   Category,
   County,
@@ -26,9 +27,29 @@ import {
   deleteCloudinaryUploadByToken,
   uploadImageToCloudinary,
 } from '@/services/api/cloudinary-service';
+import { getAppError } from '@/services/api/error-utils';
 import { createPlace, getPlace, updatePlace } from '@/services/api/place-service';
 import { useLocationSelectionStore } from '@/store/location-selection';
 import { theme } from '@/theme';
+
+type AddPlaceField =
+  | 'name'
+  | 'category'
+  | 'county'
+  | 'description'
+  | 'photos'
+  | 'location';
+
+type AddPlaceFormErrors = Record<AddPlaceField, boolean>;
+
+const EMPTY_FORM_ERRORS: AddPlaceFormErrors = {
+  name: false,
+  category: false,
+  county: false,
+  description: false,
+  photos: false,
+  location: false,
+};
 
 export default function AddPlaceScreen() {
   const { edit } = useLocalSearchParams<{ edit?: string }>();
@@ -63,6 +84,22 @@ export default function AddPlaceScreen() {
   const [selectedCounty, setSelectedCounty] = useState<County | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [formErrors, setFormErrors] =
+    useState<AddPlaceFormErrors>(EMPTY_FORM_ERRORS);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const nameInputRef = useRef<TextInput>(null);
+  const countyInputRef = useRef<TextInput>(null);
+  const descriptionInputRef = useRef<TextInput>(null);
+
+  const fieldY = useRef<Record<AddPlaceField, number>>({
+    name: 0,
+    category: 0,
+    county: 0,
+    description: 0,
+    photos: 0,
+    location: 0,
+  });
 
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
@@ -88,6 +125,11 @@ export default function AddPlaceScreen() {
 
     setLatitude(selectedLocation.latitude);
     setLongitude(selectedLocation.longitude);
+    setFormErrors((current) =>
+      current.location
+        ? { ...current, location: false }
+        : current
+    );
     clearSelectedLocation();
   }, [selectedLocation, clearSelectedLocation]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -104,15 +146,38 @@ export default function AddPlaceScreen() {
 
 
   useEffect(() => {
+    if (edit) {
+      return;
+    }
+
+    setName('');
+    setDescription('');
+    setSelectedCategory(null);
+    setSelectedCounty(null);
+    setCountySearch('');
+    setImages([]);
+    setLatitude(null);
+    setLongitude(null);
+    setShowCategories(false);
+    setShowCounties(false);
+    setFormErrors(EMPTY_FORM_ERRORS);
+  }, [edit]);
+
+  useEffect(() => {
     if (!edit || categories.length === 0 || counties.length === 0) {
       return;
     }
 
+    let cancelled = false;
     const placeId = edit;
 
     async function loadPlaceForEdit() {
       try {
         const place = await getPlace(placeId);
+
+        if (cancelled) {
+          return;
+        }
 
         setName(place.name ?? '');
         setDescription(place.description ?? '');
@@ -137,16 +202,28 @@ export default function AddPlaceScreen() {
                 String(place.county).toLowerCase()
           ) ?? null
         );
-      } catch (error: any) {
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        const appError = getAppError(
+          error,
+          'Could not load this place for editing.'
+        );
+
         Alert.alert(
           'Could not load place',
-          error?.response?.data?.message ??
-            'Could not load this place for editing.'
+          appError.message
         );
       }
     }
 
-    loadPlaceForEdit();
+    void loadPlaceForEdit();
+
+    return () => {
+      cancelled = true;
+    };
   }, [edit, categories, counties]);
 
 
@@ -170,7 +247,20 @@ export default function AddPlaceScreen() {
 
     if (!result.canceled) {
       const selected = result.assets.map((asset) => asset.uri);
-      setImages((current) => [...current, ...selected].slice(0, 10));
+
+      setImages((current) => {
+        const next = [...current, ...selected].slice(0, 10);
+
+        if (next.length >= 2) {
+          setFormErrors((errors) =>
+            errors.photos
+              ? { ...errors, photos: false }
+              : errors
+          );
+        }
+
+        return next;
+      });
     }
   }
 
@@ -201,44 +291,99 @@ export default function AddPlaceScreen() {
     if (!result.canceled && result.assets.length > 0) {
       const photoUri = result.assets[0].uri;
 
-      setImages((current) =>
-        [...current, photoUri].slice(0, 10)
-      );
+      setImages((current) => {
+        const next = [...current, photoUri].slice(0, 10);
+
+        if (next.length >= 2) {
+          setFormErrors((errors) =>
+            errors.photos
+              ? { ...errors, photos: false }
+              : errors
+          );
+        }
+
+        return next;
+      });
     }
   }
 
 
 
+  function clearFieldError(field: AddPlaceField) {
+    setFormErrors((current) =>
+      current[field]
+        ? { ...current, [field]: false }
+        : current
+    );
+  }
+
+  function goToInvalidField(field: AddPlaceField) {
+    setShowCategories(false);
+    setShowCounties(false);
+
+    scrollRef.current?.scrollTo({
+      y: Math.max(fieldY.current[field] - 12, 0),
+      animated: true,
+    });
+
+    requestAnimationFrame(() => {
+      if (field === 'name') {
+        nameInputRef.current?.focus();
+      } else if (field === 'county') {
+        countyInputRef.current?.focus();
+      } else if (field === 'description') {
+        descriptionInputRef.current?.focus();
+      }
+    });
+  }
+
   async function handleSubmit() {
-    if (!name.trim()) {
-      Alert.alert('Missing place name', 'Enter a place name.');
+    if (submitting) {
       return;
     }
 
-    if (!selectedCategory) {
-      Alert.alert('Missing category', 'Select a category.');
+    const nextErrors: AddPlaceFormErrors = {
+      name: !name.trim(),
+      category: !selectedCategory,
+      county: !selectedCounty,
+      description: !description.trim(),
+      photos: images.length < 2,
+      location: latitude === null || longitude === null,
+    };
+
+    setFormErrors(nextErrors);
+
+    const fieldOrder: AddPlaceField[] = [
+      'name',
+      'category',
+      'county',
+      'description',
+      'photos',
+      'location',
+    ];
+
+    const firstInvalidField = fieldOrder.find(
+      (field) => nextErrors[field]
+    );
+
+    if (firstInvalidField) {
+      goToInvalidField(firstInvalidField);
       return;
     }
 
-    if (!selectedCounty) {
-      Alert.alert('Missing county', 'Select a county.');
+    if (
+      !selectedCategory ||
+      !selectedCounty ||
+      latitude === null ||
+      longitude === null
+    ) {
       return;
     }
 
-    if (!description.trim()) {
-      Alert.alert('Missing description', 'Enter a description.');
-      return;
-    }
-
-    if (images.length < 2) {
-      Alert.alert('More images required', 'Select at least 2 images.');
-      return;
-    }
-
-    if (latitude === null || longitude === null) {
-      Alert.alert('Location required', 'Set the place location.');
-      return;
-    }
+    const category = selectedCategory;
+    const county = selectedCounty;
+    const placeLatitude = latitude;
+    const placeLongitude = longitude;
 
     const uploadedDeleteTokens: string[] = [];
 
@@ -263,11 +408,11 @@ export default function AddPlaceScreen() {
 
       const payload = {
         name: name.trim(),
-        category: selectedCategory.slug,
-        countyCode: selectedCounty.code,
+        category: category.slug,
+        countyCode: county.code,
         description: description.trim(),
-        latitude,
-        longitude,
+        latitude: placeLatitude,
+        longitude: placeLongitude,
         images: uploadedUrls,
       };
 
@@ -293,6 +438,8 @@ export default function AddPlaceScreen() {
           'Place updated',
           'Your changes were saved successfully.'
         );
+
+        router.replace('/');
       } else {
         await createPlace(payload);
 
@@ -311,20 +458,32 @@ export default function AddPlaceScreen() {
           }),
         ]);
 
-        Alert.alert(
-          'Place added',
-          'Your place was added successfully.'
-        );
-
         setName('');
         setDescription('');
         setSelectedCategory(null);
         setSelectedCounty(null);
+        setCountySearch('');
         setImages([]);
         setLatitude(null);
         setLongitude(null);
+        setShowCategories(false);
+        setShowCounties(false);
+
+        Alert.alert(
+          'Place added',
+          'Your place was added successfully.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/'),
+            },
+          ],
+          {
+            cancelable: false,
+          }
+        );
       }
-    } catch (error: any) {
+    } catch (error) {
       if (uploadedDeleteTokens.length > 0) {
         await Promise.allSettled(
           uploadedDeleteTokens.map((deleteToken) =>
@@ -333,12 +492,21 @@ export default function AddPlaceScreen() {
         );
       }
 
+      const appError = getAppError(
+        error,
+        isEditing
+          ? 'Could not update this place. Please try again.'
+          : 'Could not add this place. Please try again.'
+      );
+
       Alert.alert(
         isEditing ? 'Could not update place' : 'Could not add place',
-        error?.response?.data?.message ??
-          error?.message ??
-          'Something went wrong.'
+        appError.message
       );
+
+      if (isEditing) {
+        router.replace('/');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -378,6 +546,8 @@ export default function AddPlaceScreen() {
               onPress: () => {
                 setLatitude(nextLatitude);
                 setLongitude(nextLongitude);
+                clearFieldError('location');
+                clearFieldError('location');
               },
             },
             {
@@ -417,11 +587,17 @@ export default function AddPlaceScreen() {
 
   return (
     <View style={styles.screen}>
+      <ActionLoadingModal
+        visible={submitting}
+        label={isEditing ? 'Updating...' : 'Submitting...'}
+      />
+
       <View style={styles.header}>
         <Text style={styles.title}>Add Place</Text>
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -439,24 +615,53 @@ export default function AddPlaceScreen() {
           />
         )}
 
-        <Text style={styles.label}>
+        <Text
+          style={styles.label}
+          onLayout={(event) => {
+            fieldY.current.name = event.nativeEvent.layout.y;
+          }}
+        >
           Name <Text style={styles.required}>*</Text>
         </Text>
         <TextInput
-          style={styles.input}
+          ref={nameInputRef}
+          style={[
+            styles.input,
+            formErrors.name && styles.fieldErrorBorder,
+          ]}
           placeholder="Name"
           placeholderTextColor={theme.colors.muted}
           value={name}
-          onChangeText={setName}
+          onChangeText={(value) => {
+            setName(value);
+
+            if (value.trim()) {
+              clearFieldError('name');
+            }
+          }}
         />
 
-        <Text style={styles.label}>
+        {formErrors.name && (
+          <Text style={styles.fieldErrorText}>
+            Name is required.
+          </Text>
+        )}
+
+        <Text
+          style={styles.label}
+          onLayout={(event) => {
+            fieldY.current.category = event.nativeEvent.layout.y;
+          }}
+        >
           Category <Text style={styles.required}>*</Text>
         </Text>
 
         <View ref={categorySelectRef}>
           <Pressable
-            style={styles.select}
+            style={[
+              styles.select,
+              formErrors.category && styles.fieldErrorBorder,
+            ]}
             onPress={() => {
               setShowCounties(false);
 
@@ -484,6 +689,12 @@ export default function AddPlaceScreen() {
             />
           </Pressable>
         </View>
+
+        {formErrors.category && (
+          <Text style={styles.fieldErrorText}>
+            Category is required.
+          </Text>
+        )}
 
         <Modal
           visible={showCategories}
@@ -533,6 +744,7 @@ export default function AddPlaceScreen() {
                     style={styles.dropdownItem}
                     onPress={() => {
                       setSelectedCategory(category);
+                      clearFieldError('category');
                       setShowCategories(false);
                     }}
                   >
@@ -557,13 +769,24 @@ export default function AddPlaceScreen() {
           </View>
         </Modal>
 
-        <Text style={styles.label}>
+        <Text
+          style={styles.label}
+          onLayout={(event) => {
+            fieldY.current.county = event.nativeEvent.layout.y;
+          }}
+        >
           County <Text style={styles.required}>*</Text>
         </Text>
 
         <View ref={countySelectRef}>
-          <View style={styles.countyTypeahead}>
+          <View
+            style={[
+              styles.countyTypeahead,
+              formErrors.county && styles.fieldErrorBorder,
+            ]}
+          >
             <TextInput
+              ref={countyInputRef}
               style={styles.countyTypeaheadInput}
               placeholder="County"
               placeholderTextColor={theme.colors.muted}
@@ -606,6 +829,12 @@ export default function AddPlaceScreen() {
             />
           </View>
         </View>
+
+        {formErrors.county && (
+          <Text style={styles.fieldErrorText}>
+            County is required.
+          </Text>
+        )}
 
         <Modal
           visible={showCounties}
@@ -662,6 +891,7 @@ export default function AddPlaceScreen() {
                       onPress={() => {
                         setSelectedCounty(county);
                         setCountySearch(county.name);
+                        clearFieldError('county');
                         setShowCounties(false);
                       }}
                     >
@@ -686,21 +916,47 @@ export default function AddPlaceScreen() {
           </View>
         </Modal>
 
-        <Text style={styles.label}>
+        <Text
+          style={styles.label}
+          onLayout={(event) => {
+            fieldY.current.description = event.nativeEvent.layout.y;
+          }}
+        >
           Description <Text style={styles.required}>*</Text>
         </Text>
         <TextInput
-          style={styles.description}
+          ref={descriptionInputRef}
+          style={[
+            styles.description,
+            formErrors.description && styles.fieldErrorBorder,
+          ]}
           placeholder="What makes this place special?"
           placeholderTextColor={theme.colors.muted}
           value={description}
-          onChangeText={setDescription}
+          onChangeText={(value) => {
+            setDescription(value);
+
+            if (value.trim()) {
+              clearFieldError('description');
+            }
+          }}
           multiline
           textAlignVertical="top"
         />
 
-        <Text style={styles.label}>
-          Photos (2–10)
+        {formErrors.description && (
+          <Text style={styles.fieldErrorText}>
+            Description is required.
+          </Text>
+        )}
+
+        <Text
+          style={styles.label}
+          onLayout={(event) => {
+            fieldY.current.photos = event.nativeEvent.layout.y;
+          }}
+        >
+          Photos (2–10) <Text style={styles.required}>*</Text>
         </Text>
 
         <View style={styles.photoManager}>
@@ -751,7 +1007,18 @@ export default function AddPlaceScreen() {
           )}
         </View>
 
-        <Text style={styles.label}>
+        {formErrors.photos && (
+          <Text style={styles.fieldErrorText}>
+            Add at least 2 photos.
+          </Text>
+        )}
+
+        <Text
+          style={styles.label}
+          onLayout={(event) => {
+            fieldY.current.location = event.nativeEvent.layout.y;
+          }}
+        >
           Location <Text style={styles.required}>*</Text>
         </Text>
 
@@ -791,7 +1058,12 @@ export default function AddPlaceScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.locationStatus}>
+        <View
+          style={[
+            styles.locationStatus,
+            formErrors.location && styles.fieldErrorBorder,
+          ]}
+        >
           <View style={styles.locationStatusIcon}>
             <Ionicons
               name={
@@ -823,19 +1095,21 @@ export default function AddPlaceScreen() {
           </View>
         </View>
 
+        {formErrors.location && (
+          <Text style={styles.fieldErrorText}>
+            Location is required.
+          </Text>
+        )}
+
         <Pressable
           style={styles.submit}
           onPress={handleSubmit}
           disabled={submitting}
         >
           <Text style={styles.submitText}>
-            {submitting
-              ? isEditing
-                ? 'Saving changes...'
-                : 'Adding place...'
-              : isEditing
-                ? 'Save Changes'
-                : 'Add Place · +10 XP'}
+            {isEditing
+              ? 'Save Changes'
+              : 'Add Place · +10 XP'}
           </Text>
         </Pressable>
       </ScrollView>
@@ -879,6 +1153,15 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   required: {
+    color: theme.colors.danger,
+  },
+  fieldErrorBorder: {
+    borderColor: theme.colors.danger,
+  },
+  fieldErrorText: {
+    marginTop: 5,
+    fontSize: 12,
+    fontWeight: '600',
     color: theme.colors.danger,
   },
   input: {

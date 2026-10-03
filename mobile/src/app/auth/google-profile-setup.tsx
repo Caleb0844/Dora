@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
@@ -13,13 +13,17 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { completeGoogleProfile } from '@/features/auth/auth-service';
 import { resumeAfterAuth } from '@/features/auth/resume-after-auth';
+import { useAuthIntentStore } from '@/store/auth-intent';
 import {
   deleteCloudinaryUploadByToken,
   uploadImageToCloudinary,
 } from '@/services/api/cloudinary-service';
+import { getAppError } from '@/services/api/error-utils';
 import { theme } from '@/theme';
 
 export default function GoogleProfileSetupScreen() {
+  const clearIntent = useAuthIntentStore((state) => state.clearIntent);
+
   const { setupToken, email } = useLocalSearchParams<{
     setupToken?: string;
     email?: string;
@@ -56,10 +60,14 @@ export default function GoogleProfileSetupScreen() {
 
   async function handleContinue() {
     if (!setupToken) {
+      clearIntent();
+
       Alert.alert(
         'Google sign-in failed',
         'The Google profile setup token is missing.'
       );
+
+      router.replace('/');
       return;
     }
 
@@ -98,24 +106,25 @@ export default function GoogleProfileSetupScreen() {
         }
       }
 
-      const message =
-        error?.response?.data?.message ??
-        'Could not finish Google sign-in.';
+      const appError = getAppError(
+        error,
+        'Could not finish Google sign-in.'
+      );
 
-      const errors = error?.response?.data?.errors;
+      const shouldReturnHome =
+        appError.kind === 'network' ||
+        appError.kind === 'timeout' ||
+        appError.kind === 'server';
 
-      if (errors && Object.keys(errors).length > 0) {
-        const firstError = Object.values(errors)[0];
+      Alert.alert(
+        'Google sign-in failed',
+        appError.message
+      );
 
-        Alert.alert(
-          'Google sign-in failed',
-          String(firstError ?? message)
-        );
-
-        return;
+      if (shouldReturnHome) {
+        clearIntent();
+        router.replace('/');
       }
-
-      Alert.alert('Google sign-in failed', message);
     } finally {
       setLoading(false);
     }

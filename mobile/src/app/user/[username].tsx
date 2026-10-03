@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import { ProfilePlaceGrid } from '@/components/profile-place-grid';
+import { RequestErrorState } from '@/components/request-error-state';
 import {
   getPublicProfile,
   getPublicProfilePlaces,
@@ -34,9 +35,9 @@ export default function PublicProfileScreen() {
   const [lastPage, setLastPage] = useState(true);
   const [loading, setLoading] = useState(Boolean(username));
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(
-    username ? null : 'User not found.'
-  );
+  const [error, setError] = useState<unknown | null>(null);
+  const [placesError, setPlacesError] = useState<unknown | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<unknown | null>(null);
 
   const [sort, setSort] =
     useState<PublicProfileSort>('newest');
@@ -131,14 +132,10 @@ export default function PublicProfileScreen() {
       setPlaces(placesData.content);
       setPage(placesData.page);
       setLastPage(placesData.last);
-    } catch (requestError: any) {
+    } catch (requestError) {
       setProfile(null);
       setPlaces([]);
-
-      setError(
-        requestError?.response?.data?.message ??
-          'Could not load this profile.'
-      );
+      setError(requestError);
     } finally {
       initialPlacesLoaded.current = true;
       setLoading(false);
@@ -169,6 +166,8 @@ export default function PublicProfileScreen() {
     const requestId = ++profileSearchRequestId.current;
 
     try {
+      setPlacesError(null);
+
       const placesData = await getPublicProfilePlaces(
         username,
         0,
@@ -190,6 +189,8 @@ export default function PublicProfileScreen() {
           'Failed to filter public profile places:',
           requestError
         );
+
+        setPlacesError(requestError);
       }
     }
   }, [username]);
@@ -215,6 +216,7 @@ export default function PublicProfileScreen() {
 
     try {
       setLoadingMore(true);
+      setLoadMoreError(null);
 
       const nextPage = page + 1;
 
@@ -233,6 +235,8 @@ export default function PublicProfileScreen() {
 
       setPage(placesData.page);
       setLastPage(placesData.last);
+    } catch (requestError) {
+      setLoadMoreError(requestError);
     } finally {
       setLoadingMore(false);
     }
@@ -246,6 +250,34 @@ export default function PublicProfileScreen() {
       >
         <View style={styles.center}>
           <ActivityIndicator size="large" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!username) {
+    return (
+      <SafeAreaView
+        style={styles.container}
+        edges={['top']}
+      >
+        <View style={styles.errorHeader}>
+          <Pressable
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons
+              name="arrow-back"
+              size={22}
+              color={theme.colors.text}
+            />
+          </Pressable>
+        </View>
+
+        <View style={styles.center}>
+          <Text style={styles.errorText}>
+            User not found.
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -270,11 +302,14 @@ export default function PublicProfileScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.center}>
-          <Text style={styles.errorText}>
-            {error ?? 'User not found.'}
-          </Text>
-        </View>
+        <RequestErrorState
+          error={error}
+          title="Could not load this profile"
+          fallbackMessage="This profile could not be loaded right now. Please try again."
+          onRetry={() => {
+            void loadInitial(username);
+          }}
+        />
       </SafeAreaView>
     );
   }
@@ -542,6 +577,17 @@ export default function PublicProfileScreen() {
           )}
         </View>
 
+        {placesError !== null && (
+          <RequestErrorState
+            error={placesError}
+            title="Could not update places"
+            fallbackMessage="These places could not be updated right now. Please try again."
+            onRetry={() => {
+              void reloadPlaces(searchQuery.trim(), sort);
+            }}
+          />
+        )}
+
         {places.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>
@@ -568,7 +614,17 @@ export default function PublicProfileScreen() {
               }
             />
 
-            {!lastPage && (
+            {loadMoreError ? (
+              <RequestErrorState
+                error={loadMoreError}
+                title="Could not load more places"
+                fallbackMessage="More places could not be loaded right now. Please try again."
+                retryLabel="Try again"
+                onRetry={() => {
+                  void loadMore();
+                }}
+              />
+            ) : !lastPage ? (
               <Pressable
                 style={styles.loadMoreButton}
                 onPress={loadMore}
@@ -582,7 +638,7 @@ export default function PublicProfileScreen() {
                   </Text>
                 )}
               </Pressable>
-            )}
+            ) : null}
           </>
         )}
       </Animated.ScrollView>

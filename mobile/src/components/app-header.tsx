@@ -1,12 +1,21 @@
+import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { theme } from '@/theme';
 
-export function AppHeader() {
+type AppHeaderProps = {
+  rightAction?: ReactNode;
+};
+
+export function AppHeader({ rightAction }: AppHeaderProps) {
   return (
     <View style={styles.header}>
-      <Text style={styles.brand}>Twende Trails</Text>
-      <Text style={styles.tagline}>FEEL THE ADVENTURE</Text>
+      <View style={styles.copy}>
+        <Text style={styles.brand}>Twende Trails</Text>
+        <Text style={styles.tagline}>FEEL THE ADVENTURE</Text>
+      </View>
+
+      {rightAction}
     </View>
   );
 }
@@ -19,6 +28,12 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  copy: {
+    flex: 1,
   },
   brand: {
     fontSize: 25,

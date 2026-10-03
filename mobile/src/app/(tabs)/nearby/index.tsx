@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { AppHeader } from '@/components/app-header';
+import { RequestErrorState } from '@/components/request-error-state';
 import { TwendePost } from '@/components/twende-post';
 import {
   getNearbyPlaces,
@@ -20,6 +21,10 @@ import {
 import { checkInPlace } from '@/features/profile/check-in-service';
 import { getAllVisitedPlaceIds } from '@/features/profile/visited-service';
 import { getCurrentLocation } from '@/services/location/location-service';
+import { useAuthIntentStore } from '@/store/auth-intent';
+import { useAuthPromptStore } from '@/store/auth-prompt';
+import { useAuthSessionStore } from '@/store/auth-session';
+import { useBookmarkStore } from '@/store/bookmarks';
 import { theme } from '@/theme';
 
 const distances = ['1', '5', '10', '15', '20', '30', '40', 'All'];
@@ -31,6 +36,17 @@ export default function NearbyScreen() {
   const [distanceMenuOpen, setDistanceMenuOpen] = useState(false);
   const [checkingInIds, setCheckingInIds] = useState<Set<string>>(new Set());
   const checkingInIdsRef = useRef<Set<string>>(new Set());
+  const [bookmarkingIds, setBookmarkingIds] = useState<Set<string>>(new Set());
+  const bookmarkingIdsRef = useRef<Set<string>>(new Set());
+
+  const authStatus = useAuthSessionStore((state) => state.status);
+  const setAuthIntent = useAuthIntentStore((state) => state.setIntent);
+  const openAuthPrompt = useAuthPromptStore((state) => state.openPrompt);
+
+  const bookmarks = useBookmarkStore((state) => state.bookmarks);
+  const saveBookmark = useBookmarkStore((state) => state.saveBookmark);
+  const removeBookmark = useBookmarkStore((state) => state.removeBookmark);
+
   const radius = Number(selected);
 
   const locationQuery = useQuery({
@@ -123,6 +139,38 @@ export default function NearbyScreen() {
     }
   }
 
+  async function handleBookmarkPress(placeId: string) {
+    if (bookmarkingIdsRef.current.has(placeId)) {
+      return;
+    }
+
+    if (authStatus !== 'authenticated') {
+      setAuthIntent({
+        type: 'bookmark',
+        placeId,
+      });
+
+      openAuthPrompt('bookmark');
+      return;
+    }
+
+    const currentlyBookmarked = bookmarks[placeId] ?? false;
+
+    bookmarkingIdsRef.current.add(placeId);
+    setBookmarkingIds(new Set(bookmarkingIdsRef.current));
+
+    try {
+      if (currentlyBookmarked) {
+        await removeBookmark(placeId);
+      } else {
+        await saveBookmark(placeId);
+      }
+    } finally {
+      bookmarkingIdsRef.current.delete(placeId);
+      setBookmarkingIds(new Set(bookmarkingIdsRef.current));
+    }
+  }
+
   function handleDistancePress(distance: string) {
     setDistanceMenuOpen(false);
 
@@ -205,11 +253,19 @@ export default function NearbyScreen() {
           <ActivityIndicator size="large" />
         </View>
       ) : error ? (
-        <View style={styles.center}>
-          <Text style={styles.error}>
-            {(error as any)?.message ?? 'Unable to load nearby places.'}
-          </Text>
-        </View>
+        <RequestErrorState
+          error={error}
+          title="Could not load nearby places"
+          fallbackMessage="Nearby places are unavailable right now. Please try again."
+          onRetry={() => {
+            if (locationQuery.error) {
+              void locationQuery.refetch();
+              return;
+            }
+
+            void nearbyQuery.refetch();
+          }}
+        />
       ) : (
         <FlatList
           data={places}
@@ -232,7 +288,9 @@ export default function NearbyScreen() {
               creatorProfileImage={item.creatorProfileImage}
               visited={visitedIds.has(item.id)}
               visiting={visitedIdsQuery.isPending || checkingInIds.has(item.id)}
+              bookmarked={bookmarks[item.id] ?? false}
               onVisitedPress={handleVisitedPress}
+              onBookmarkPress={handleBookmarkPress}
             />
           )}
         />
